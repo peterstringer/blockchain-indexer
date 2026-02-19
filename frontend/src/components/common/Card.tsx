@@ -3,12 +3,13 @@ import type { ReactNode } from "react";
 interface CardProps {
   children: ReactNode;
   className?: string;
+  hover?: boolean;
 }
 
-export function Card({ children, className = "" }: CardProps) {
+export function Card({ children, className = "", hover = false }: CardProps) {
   return (
     <div
-      className={`bg-bg-card border border-border rounded-xl p-5 ${className}`}
+      className={`bg-bg-card border border-border rounded-xl p-5 ${hover ? "card-hover" : ""} ${className}`}
     >
       {children}
     </div>

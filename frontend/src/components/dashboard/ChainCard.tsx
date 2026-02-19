@@ -55,7 +55,7 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
   const chainStatus = isRunning && bps > 0 ? "running" : isRunning ? "info" : "stopped";
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col" hover>
       <CardHeader
         title=""
         action={
