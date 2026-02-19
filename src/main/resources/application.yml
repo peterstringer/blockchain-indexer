@@ -105,6 +105,7 @@ indexer:
   demo:
     enabled: ${DEMO_MODE:false}
     synthetic-block-count: 1000
+    seed: 42
 
 # -----------------------------------------------
 # Actuator / Management

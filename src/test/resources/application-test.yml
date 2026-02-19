@@ -50,6 +50,7 @@ indexer:
   demo:
     enabled: true
     synthetic-block-count: 10
+    seed: 42
 
 logging:
   level:

@@ -120,5 +120,7 @@ public class IndexerProperties {
 
         @Positive
         private int syntheticBlockCount = 1000;
+
+        private long seed = 42L;
     }
 }
