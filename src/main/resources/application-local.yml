@@ -1,10 +1,13 @@
 # ==============================================
-# Test Profile Configuration
+# Local Development Profile
 # ==============================================
+# Run with: --spring.profiles.active=local
+# Uses H2 in-memory database and synthetic demo data
+# so you can start the app without PostgreSQL.
 
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    url: jdbc:h2:mem:indexerdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     username: sa
     password:
     driver-class-name: org.h2.Driver
@@ -17,6 +20,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
 
 indexer:
   chains:
@@ -31,24 +41,24 @@ indexer:
       rate-limit-requests-per-second: 100
 
   concurrency:
-    worker-threads: 2
-    batch-size: 5
-    max-queue-size: 10
+    worker-threads: 4
+    batch-size: 10
+    max-queue-size: 50
 
   parquet:
-    output-path: ./build/test-output
+    output-path: ./build/local-output
     compression-codec: SNAPPY
     partition-by-chain: false
     partition-by-date: false
-    row-group-size: 1048576
-    page-size: 65536
 
   demo:
     enabled: true
-    synthetic-block-count: 10
+    synthetic-block-count: 100
     seed: 42
 
 logging:
   level:
-    root: WARN
+    root: INFO
     com.peterstringer: DEBUG
+    org.web3j: WARN
+    org.apache.parquet: WARN
