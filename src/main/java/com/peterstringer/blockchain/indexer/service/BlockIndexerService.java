@@ -12,9 +12,10 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import com.peterstringer.blockchain.indexer.model.ws.BlockIndexedMessage;
+import com.peterstringer.blockchain.indexer.model.ws.IndexerProgressMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -163,7 +164,7 @@ public class BlockIndexerService {
     private final ParquetWriterService parquetWriterService;
     private final CheckpointRepository checkpointRepository;
     private final MetricsRepository metricsRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketService webSocketService;
     private final MeterRegistry meterRegistry;
 
     // ---- Thread pools ----
@@ -182,14 +183,14 @@ public class BlockIndexerService {
                                ParquetWriterService parquetWriterService,
                                CheckpointRepository checkpointRepository,
                                MetricsRepository metricsRepository,
-                               java.util.Optional<SimpMessagingTemplate> messagingTemplate,
+                               WebSocketService webSocketService,
                                MeterRegistry meterRegistry) {
         this.properties = properties;
         this.rpcClientService = rpcClientService;
         this.parquetWriterService = parquetWriterService;
         this.checkpointRepository = checkpointRepository;
         this.metricsRepository = metricsRepository;
-        this.messagingTemplate = messagingTemplate.orElse(null);
+        this.webSocketService = webSocketService;
         this.meterRegistry = meterRegistry;
     }
 
@@ -498,8 +499,9 @@ public class BlockIndexerService {
                 Duration batchDuration = Duration.between(batchStartTime, Instant.now());
                 recordBatchMetrics(chain, ctx, blocks.size(), txCount, batchDuration);
 
-                // WebSocket progress
+                // WebSocket: progress + last 10 block notifications
                 sendProgressUpdate(chain, ctx, endBlock);
+                sendRecentBlockNotifications(chain, blocks);
 
                 // Log progress
                 double bps = calculateBlocksPerSecond(ctx);
@@ -598,11 +600,12 @@ public class BlockIndexerService {
                     ctx.lastBlockHash = block.getBlockHash();
                     ctx.lastBatchAt = Instant.now();
 
-                    // Checkpoint + metrics
+                    // Checkpoint + metrics + WebSocket
                     updateCheckpoint(chain, blockNum, 1, txCount);
                     Duration blockDuration = Duration.between(blockStart, Instant.now());
                     recordBatchMetrics(chain, ctx, 1, txCount, blockDuration);
                     sendProgressUpdate(chain, ctx, latestBlock);
+                    sendRecentBlockNotifications(chain, List.of(block));
 
                     if (blockNum % 10 == 0) {
                         log.info("chain={} incremental: block {} | {} txs | {}ms",
@@ -702,31 +705,59 @@ public class BlockIndexerService {
     // WebSocket progress
     // =========================================================================
 
+    /** Maximum number of block-indexed notifications sent per batch. */
+    private static final int MAX_BLOCK_NOTIFICATIONS_PER_BATCH = 10;
+
+    /**
+     * Sends a typed progress update via {@link WebSocketService}.
+     * Throttling is handled inside WebSocketService (max 2/s per chain).
+     */
     private void sendProgressUpdate(String chain, ChainIndexingContext ctx,
                                     long targetBlock) {
-        if (messagingTemplate == null) {
-            return;
-        }
-        try {
-            double bps = calculateBlocksPerSecond(ctx);
-            long remaining = targetBlock - ctx.lastBlockNumber;
-            String eta = (bps > 0 && remaining > 0)
-                    ? formatDuration(Duration.ofSeconds((long) (remaining / bps)))
-                    : "N/A";
+        double bps = calculateBlocksPerSecond(ctx);
+        long remaining = targetBlock - ctx.lastBlockNumber;
+        String eta = (bps > 0 && remaining > 0)
+                ? formatDuration(Duration.ofSeconds((long) (remaining / bps)))
+                : "N/A";
 
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("chain", chain);
-            payload.put("blockNumber", ctx.lastBlockNumber);
-            payload.put("blocksProcessed", ctx.blocksProcessed.get());
-            payload.put("transactionsProcessed", ctx.transactionsProcessed.get());
-            payload.put("blocksPerSecond", Math.round(bps * 10.0) / 10.0);
-            payload.put("eta", eta);
-            payload.put("mode", ctx.state.name());
-            payload.put("errors", ctx.errorCount.get());
+        IndexerProgressMessage msg = IndexerProgressMessage.builder()
+                .chain(chain)
+                .currentBlock(ctx.lastBlockNumber)
+                .latestBlock(targetBlock)
+                .blocksProcessed(ctx.blocksProcessed.get())
+                .transactionsProcessed(ctx.transactionsProcessed.get())
+                .blocksPerSecond(Math.round(bps * 10.0) / 10.0)
+                .estimatedTimeRemaining(eta)
+                .timestamp(System.currentTimeMillis())
+                .build();
 
-            messagingTemplate.convertAndSend("/topic/indexer/" + chain, (Object) payload);
-        } catch (Exception e) {
-            log.debug("Failed to send WebSocket update for chain={}: {}", chain, e.getMessage());
+        webSocketService.sendProgress(chain, msg);
+    }
+
+    /**
+     * Sends block-indexed notifications for the most recent blocks in a batch.
+     * Limited to the last {@value #MAX_BLOCK_NOTIFICATIONS_PER_BATCH} blocks to
+     * avoid flooding subscribers during high-throughput backfill.
+     */
+    private void sendRecentBlockNotifications(String chain, List<IndexedBlock> blocks) {
+        int start = Math.max(0, blocks.size() - MAX_BLOCK_NOTIFICATIONS_PER_BATCH);
+        for (int i = start; i < blocks.size(); i++) {
+            IndexedBlock b = blocks.get(i);
+            Double baseFeeGwei = b.getBaseFeePerGas() != null
+                    ? b.getBaseFeePerGas() / 1_000_000_000.0
+                    : null;
+
+            BlockIndexedMessage msg = BlockIndexedMessage.builder()
+                    .chain(chain)
+                    .blockNumber(b.getBlockNumber())
+                    .blockHash(b.getBlockHash())
+                    .transactionCount(b.getTransactionCount())
+                    .gasUsed(b.getGasUsed())
+                    .baseFeeGwei(baseFeeGwei)
+                    .timestamp(b.getTimestamp())
+                    .build();
+
+            webSocketService.sendBlockIndexed(chain, msg);
         }
     }
 
