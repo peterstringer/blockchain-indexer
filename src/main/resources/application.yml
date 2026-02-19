@@ -1,0 +1,136 @@
+# ==============================================
+# Multi-Chain Block Indexer - Application Config
+# ==============================================
+
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: blockchain-indexer
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/indexer}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000       # 5 minutes
+      connection-timeout: 20000  # 20 seconds
+      max-lifetime: 1200000      # 20 minutes
+      pool-name: IndexerHikariPool
+      leak-detection-threshold: 60000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# -----------------------------------------------
+# Indexer Configuration
+# -----------------------------------------------
+indexer:
+  chains:
+    ethereum:
+      name: Ethereum
+      chain-id: 1
+      rpc-urls:
+        - ${ALCHEMY_ETH_URL:https://eth.llamarpc.com}
+        - ${INFURA_ETH_URL:https://ethereum-rpc.publicnode.com}
+      start-block: 21000000
+      end-block:
+      max-retries-per-block: 3
+      retry-delay-ms: 1000
+      rate-limit-requests-per-second: 10
+
+    polygon:
+      name: Polygon
+      chain-id: 137
+      rpc-urls:
+        - ${ALCHEMY_POLYGON_URL:https://polygon.llamarpc.com}
+        - ${INFURA_POLYGON_URL:https://polygon-bor-rpc.publicnode.com}
+      start-block: 65000000
+      end-block:
+      max-retries-per-block: 3
+      retry-delay-ms: 1000
+      rate-limit-requests-per-second: 10
+
+    arbitrum:
+      name: Arbitrum
+      chain-id: 42161
+      rpc-urls:
+        - ${ALCHEMY_ARBITRUM_URL:https://arb1.arbitrum.io/rpc}
+        - ${INFURA_ARBITRUM_URL:https://arbitrum-one-rpc.publicnode.com}
+      start-block: 275000000
+      end-block:
+      max-retries-per-block: 3
+      retry-delay-ms: 1000
+      rate-limit-requests-per-second: 10
+
+  concurrency:
+    worker-threads: 10
+    batch-size: 50
+    max-queue-size: 500
+
+  parquet:
+    output-path: ${PARQUET_OUTPUT_PATH:./output}
+    compression-codec: SNAPPY
+    partition-by-chain: true
+    partition-by-date: true
+    row-group-size: 134217728   # 128 MB
+    page-size: 1048576          # 1 MB
+
+  demo:
+    enabled: ${DEMO_MODE:false}
+    synthetic-block-count: 1000
+
+# -----------------------------------------------
+# Actuator / Management
+# -----------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+# -----------------------------------------------
+# Logging
+# -----------------------------------------------
+logging:
+  level:
+    root: INFO
+    com.peterstringer: DEBUG
+    org.web3j: WARN
+    org.apache.parquet: WARN
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
