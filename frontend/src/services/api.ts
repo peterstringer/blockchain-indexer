@@ -1,0 +1,59 @@
+import type {
+  IndexerStatus,
+  HealthResponse,
+  StartIndexingRequest,
+  StopIndexingRequest,
+  GasPriceAggregation,
+  IndexerCheckpoint,
+} from "@/types";
+
+const BASE = "/api";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status}: ${body}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** GET /api/indexer/status */
+export function fetchStatus(): Promise<IndexerStatus> {
+  return request("/indexer/status");
+}
+
+/** GET /api/indexer/health */
+export function fetchHealth(): Promise<HealthResponse> {
+  return request("/indexer/health");
+}
+
+/** POST /api/indexer/start */
+export function startIndexing(body: StartIndexingRequest = {}): Promise<IndexerStatus> {
+  return request("/indexer/start", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST /api/indexer/stop */
+export function stopIndexing(body: StopIndexingRequest = {}): Promise<IndexerStatus> {
+  return request("/indexer/stop", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** GET /api/analytics/gas-prices?chain=... */
+export function fetchGasPrices(chain?: string): Promise<GasPriceAggregation[]> {
+  const params = chain ? `?chain=${encodeURIComponent(chain)}` : "";
+  return request(`/analytics/gas-prices${params}`);
+}
+
+/** GET /api/indexer/checkpoints */
+export function fetchCheckpoints(): Promise<IndexerCheckpoint[]> {
+  return request("/indexer/checkpoints");
+}
