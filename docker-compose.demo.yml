@@ -1,0 +1,22 @@
+# ==============================================
+# Demo Mode - No RPC Keys Required
+# ==============================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# Runs the indexer with synthetic demo data.
+# No API keys or external RPC connections needed.
+
+services:
+
+  indexer:
+    environment:
+      DEMO_MODE: "true"
+
+      # Override RPC URLs with dummy values (demo mode won't use them)
+      ALCHEMY_ETH_URL: http://localhost:8545
+      ALCHEMY_POLYGON_URL: http://localhost:8545
+      ALCHEMY_ARBITRUM_URL: http://localhost:8545
+      INFURA_ETH_URL: http://localhost:8545
+      INFURA_POLYGON_URL: http://localhost:8545
+      INFURA_ARBITRUM_URL: http://localhost:8545

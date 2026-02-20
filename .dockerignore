@@ -1,0 +1,40 @@
+# Build output
+target/
+build/
+
+# Frontend build artifacts (rebuilt in Docker)
+frontend/node_modules/
+frontend/dist/
+src/main/resources/static/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment (secrets injected via docker-compose)
+.env
+
+# Parquet output
+*.parquet
+output/
+
+# Claude Code
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore

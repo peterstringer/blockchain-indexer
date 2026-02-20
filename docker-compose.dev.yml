@@ -1,0 +1,20 @@
+# ==============================================
+# Development Override
+# ==============================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up postgres
+#
+# Starts only PostgreSQL so you can run the Spring Boot app
+# locally with `mvn spring-boot:run` for hot reload and debugging.
+
+services:
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  # Disable the indexer container in dev mode -
+  # you run it locally with mvn spring-boot:run
+  indexer:
+    profiles:
+      - disabled

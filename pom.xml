@@ -56,6 +56,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Dotenv - load .env files -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.postgresql</groupId>

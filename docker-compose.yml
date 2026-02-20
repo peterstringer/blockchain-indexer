@@ -1,0 +1,95 @@
+# ==============================================
+# Multi-Chain Block Indexer - Production Compose
+# ==============================================
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose logs -f indexer    # Follow indexer logs
+#   docker compose down               # Stop all services
+#   docker compose down -v            # Stop + delete data volumes
+
+services:
+
+  # ------------------------------------------
+  # PostgreSQL Database
+  # ------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: indexer-postgres
+    environment:
+      POSTGRES_DB: indexer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d indexer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ------------------------------------------
+  # Blockchain Indexer Application
+  # ------------------------------------------
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: indexer-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Database
+      DATABASE_URL: jdbc:postgresql://postgres:5432/indexer
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: ${DB_PASSWORD:-postgres}
+
+      # RPC Providers (from .env file)
+      ALCHEMY_ETH_URL: ${ALCHEMY_ETH_URL:-https://eth.llamarpc.com}
+      ALCHEMY_POLYGON_URL: ${ALCHEMY_POLYGON_URL:-https://polygon.llamarpc.com}
+      ALCHEMY_ARBITRUM_URL: ${ALCHEMY_ARBITRUM_URL:-https://arb1.arbitrum.io/rpc}
+      INFURA_ETH_URL: ${INFURA_ETH_URL:-https://ethereum-rpc.publicnode.com}
+      INFURA_POLYGON_URL: ${INFURA_POLYGON_URL:-https://polygon-bor-rpc.publicnode.com}
+      INFURA_ARBITRUM_URL: ${INFURA_ARBITRUM_URL:-https://arbitrum-one-rpc.publicnode.com}
+
+      # Parquet output
+      PARQUET_OUTPUT_PATH: /app/output
+
+      # Demo mode (disabled for production)
+      DEMO_MODE: "false"
+    volumes:
+      - parquet_output:/app/output
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------
+  # pgAdmin (optional - database management)
+  # ------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: indexer-pgadmin
+    profiles:
+      - tools
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@indexer.local
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  parquet_output:
+  pgadmin_data:
