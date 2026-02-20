@@ -1,0 +1,48 @@
+# ==============================================
+# CodeQL Security Analysis
+# ==============================================
+# Scans Java source for security vulnerabilities.
+# Runs on push to main and weekly on Monday at 06:00 UTC.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "pom.xml"
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  security-events: write
+
+jobs:
+
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+
+      - name: Build
+        run: mvn compile -DskipTests -B
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:java-kotlin
