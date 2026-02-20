@@ -265,7 +265,7 @@ class IndexedBlockTest {
                                                    String parentHash, long timestamp,
                                                    String miner, long gasLimit,
                                                    Long gasUsed, BigInteger baseFee,
-                                                   List<EthBlock.TransactionResult> txs) {
+                                                   List<EthBlock.TransactionResult<?>> txs) {
         EthBlock.Block block = mock(EthBlock.Block.class);
         when(block.getNumber()).thenReturn(BigInteger.valueOf(blockNumber));
         when(block.getHash()).thenReturn(hash);
@@ -282,11 +282,11 @@ class IndexedBlockTest {
         when(block.getLogsBloom()).thenReturn("0x00");
         when(block.getNonce()).thenReturn(BigInteger.ZERO);
         when(block.getMixHash()).thenReturn("0x00");
-        when((List<EthBlock.TransactionResult>) (List<?>) block.getTransactions()).thenReturn(txs);
+        when((List<EthBlock.TransactionResult<?>>) (List<?>) block.getTransactions()).thenReturn(txs);
         return block;
     }
 
-    private static EthBlock.TransactionResult createMockTx(BigInteger gasPrice, BigInteger value) {
+    private static EthBlock.TransactionResult<?> createMockTx(BigInteger gasPrice, BigInteger value) {
         EthBlock.TransactionObject txObj = mock(EthBlock.TransactionObject.class);
         when(txObj.getGasPrice()).thenReturn(gasPrice);
         when(txObj.getValue()).thenReturn(value);

@@ -9,8 +9,8 @@ import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
 import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.io.LocalOutputFile;
 import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
@@ -367,8 +367,8 @@ public class ParquetWriterService {
 
     private long writeParquetFile(String filePath, Schema schema,
                                   List<GenericRecord> records) throws IOException {
-        Path hadoopPath = new Path(filePath);
-        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(hadoopPath)
+        LocalOutputFile outputFile = new LocalOutputFile(java.nio.file.Path.of(filePath));
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(outputFile)
                 .withSchema(schema)
                 .withCompressionCodec(compressionCodec)
                 .withRowGroupSize(parquetConfig.getRowGroupSize())
