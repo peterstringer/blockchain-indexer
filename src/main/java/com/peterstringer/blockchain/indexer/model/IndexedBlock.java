@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.web3j.protocol.core.methods.response.EthBlock;
 
 import java.math.BigInteger;
@@ -11,6 +13,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.LongSummaryStatistics;
+import java.util.function.Supplier;
 
 /**
  * Normalized representation of a blockchain block with computed analytics.
@@ -32,6 +35,8 @@ import java.util.LongSummaryStatistics;
 @AllArgsConstructor
 public class IndexedBlock {
 
+    private static final Logger log = LoggerFactory.getLogger(IndexedBlock.class);
+
     // ---- Chain identification ----
     private String chain;
     private Long chainId;
@@ -40,6 +45,7 @@ public class IndexedBlock {
     private Long blockNumber;
     private String blockHash;
     private String parentHash;
+    /** Block timestamp in epoch milliseconds (converted from chain's epoch seconds). */
     private Long timestamp;
     private Instant indexedAt;
 
@@ -90,15 +96,21 @@ public class IndexedBlock {
      * @return a fully populated {@code IndexedBlock} (minus transactions)
      */
     public static IndexedBlock fromWeb3jBlock(String chainName, Long chainId, EthBlock.Block block) {
-        Long gasLimit = safeLongValue(block.getGasLimit());
-        Long gasUsed = safeLongValue(block.getGasUsed());
+        Long gasLimit = safeLong(block::getGasLimit);
+        Long gasUsed = safeLong(block::getGasUsed);
         Double gasPercent = (gasLimit != null && gasLimit > 0 && gasUsed != null)
                 ? (gasUsed * 100.0) / gasLimit
                 : null;
 
-        // Compute gas price statistics from transaction-level data
+        // Compute gas price statistics from transaction-level data (safely)
         List<BigInteger> gasPrices = block.getTransactions().stream()
-                .map(txResult -> ((EthBlock.TransactionObject) txResult.get()).getGasPrice())
+                .map(txResult -> {
+                    try {
+                        return ((EthBlock.TransactionObject) txResult.get()).getGasPrice();
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
                 .filter(gp -> gp != null && gp.signum() > 0)
                 .toList();
 
@@ -119,7 +131,13 @@ public class IndexedBlock {
         }
 
         BigInteger totalVal = block.getTransactions().stream()
-                .map(txResult -> ((EthBlock.TransactionObject) txResult.get()).getValue())
+                .map(txResult -> {
+                    try {
+                        return ((EthBlock.TransactionObject) txResult.get()).getValue();
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
                 .filter(v -> v != null)
                 .reduce(BigInteger.ZERO, BigInteger::add);
 
@@ -129,16 +147,16 @@ public class IndexedBlock {
                 .blockNumber(block.getNumber().longValueExact())
                 .blockHash(block.getHash())
                 .parentHash(block.getParentHash())
-                .timestamp(safeLongValue(block.getTimestamp()))
+                .timestamp(toMillis(safeLong(block::getTimestamp)))
                 .indexedAt(Instant.now())
                 .miner(block.getMiner())
-                .difficulty(nullSafeBigInt(block.getDifficulty()))
-                .totalDifficulty(nullSafeBigInt(block.getTotalDifficulty()))
-                .size(safeLongValue(block.getSize()))
+                .difficulty(safeString(block::getDifficulty))
+                .totalDifficulty(safeString(block::getTotalDifficulty))
+                .size(safeLong(block::getSize))
                 .gasLimit(gasLimit)
                 .gasUsed(gasUsed)
                 .gasUsedPercentage(gasPercent)
-                .baseFeePerGas(safeLongValue(block.getBaseFeePerGas()))
+                .baseFeePerGas(safeLong(block::getBaseFeePerGas))
                 .avgGasPrice(avgGas)
                 .medianGasPrice(medianGas)
                 .maxGasPrice(maxGas)
@@ -147,17 +165,41 @@ public class IndexedBlock {
                 .totalValue(totalVal.toString())
                 .extraData(block.getExtraData())
                 .logsBloom(block.getLogsBloom())
-                .nonce(nullSafeBigInt(block.getNonce()))
+                .nonce(safeString(block::getNonce))
                 .mixHash(block.getMixHash())
                 .transactions(Collections.emptyList())
                 .build();
     }
 
-    private static Long safeLongValue(BigInteger value) {
-        return value != null ? value.longValueExact() : null;
+    /**
+     * Safely invokes a Web3j getter that returns {@link BigInteger} and converts
+     * to {@code Long}. Returns {@code null} if the getter returns null or throws
+     * (e.g. {@code MessageDecodingException} for malformed hex like {@code "0x"}).
+     */
+    private static Long safeLong(Supplier<BigInteger> getter) {
+        try {
+            BigInteger value = getter.get();
+            return value != null ? value.longValueExact() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private static String nullSafeBigInt(BigInteger value) {
-        return value != null ? value.toString() : null;
+    /** Converts epoch seconds to epoch milliseconds (for JavaScript compatibility). */
+    private static Long toMillis(Long epochSeconds) {
+        return epochSeconds != null ? epochSeconds * 1000L : null;
+    }
+
+    /**
+     * Safely invokes a Web3j getter that returns {@link BigInteger} and converts
+     * to {@code String}. Returns {@code null} if the getter returns null or throws.
+     */
+    private static String safeString(Supplier<BigInteger> getter) {
+        try {
+            BigInteger value = getter.get();
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -8,6 +8,7 @@ import org.web3j.protocol.core.methods.response.Transaction;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
 import java.math.BigInteger;
+import java.util.function.Supplier;
 
 /**
  * Normalized representation of an on-chain transaction with receipt data.
@@ -108,33 +109,51 @@ public class IndexedTransaction {
                 .from(tx.getFrom())
                 .to(tx.getTo())
                 .contractAddress(receipt.getContractAddress())
-                .value(tx.getValue().toString())
-                .gas(tx.getGas().longValueExact())
-                .gasPrice(safeLongValue(tx.getGasPrice()))
-                .maxFeePerGas(safeLongValue(tx.getMaxFeePerGas()))
-                .maxPriorityFeePerGas(safeLongValue(tx.getMaxPriorityFeePerGas()))
+                .value(safeStringValue(tx::getValue))
+                .gas(safeLong(tx::getGas))
+                .gasPrice(safeLong(tx::getGasPrice))
+                .maxFeePerGas(safeLong(tx::getMaxFeePerGas))
+                .maxPriorityFeePerGas(safeLong(tx::getMaxPriorityFeePerGas))
                 .effectiveGasPrice(decodeHexLong(receipt.getEffectiveGasPrice()))
-                .gasUsed(receipt.getGasUsed().longValueExact())
+                .gasUsed(safeLong(receipt::getGasUsed))
                 .type(tx.getType() != null ? Integer.decode(tx.getType()) : 0)
                 .success("0x1".equals(receipt.getStatus()))
                 .status(receipt.getStatus())
                 .input(inputData)
                 .inputLength(inputData != null ? inputData.length() : 0)
-                .nonce(tx.getNonce().longValueExact())
+                .nonce(safeLong(tx::getNonce))
                 .v(tx.getV())
                 .r(tx.getR())
                 .s(tx.getS())
                 .build();
     }
 
-    private static Long safeLongValue(BigInteger value) {
-        return value != null ? value.longValueExact() : null;
+    private static Long safeLong(Supplier<BigInteger> getter) {
+        try {
+            BigInteger value = getter.get();
+            return value != null ? value.longValueExact() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String safeStringValue(Supplier<BigInteger> getter) {
+        try {
+            BigInteger value = getter.get();
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return "0";
+        }
     }
 
     private static Long decodeHexLong(String hexValue) {
         if (hexValue == null || hexValue.isEmpty()) {
             return null;
         }
-        return new BigInteger(hexValue.substring(2), 16).longValueExact();
+        try {
+            return new BigInteger(hexValue.substring(2), 16).longValueExact();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

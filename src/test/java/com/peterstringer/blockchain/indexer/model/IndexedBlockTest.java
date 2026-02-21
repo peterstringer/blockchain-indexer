@@ -125,7 +125,7 @@ class IndexedBlockTest {
             assertThat(result.getBlockNumber()).isEqualTo(18_000_000L);
             assertThat(result.getBlockHash()).isEqualTo("0xblockhash");
             assertThat(result.getParentHash()).isEqualTo("0xparenthash");
-            assertThat(result.getTimestamp()).isEqualTo(1_700_000_000L);
+            assertThat(result.getTimestamp()).isEqualTo(1_700_000_000_000L); // millis
             assertThat(result.getMiner()).isEqualTo("0xminer");
             assertThat(result.getGasLimit()).isEqualTo(30_000_000L);
             assertThat(result.getGasUsed()).isEqualTo(25_000_000L);
@@ -253,6 +253,63 @@ class IndexedBlockTest {
 
             assertThat(result.getGasUsed()).isNull();
             assertThat(result.getGasUsedPercentage()).isNull();
+        }
+
+        @Test
+        @DisplayName("should handle malformed hex fields that throw MessageDecodingException")
+        void handlesMalformedHexFields() {
+            // Simulate post-merge / L2 blocks where fields like difficulty, nonce,
+            // baseFeePerGas return malformed hex (e.g. "0x") causing MessageDecodingException
+            EthBlock.Block web3jBlock = createMockBlock(
+                    100L, "0xa", "0xb", 1_000L, "0xm",
+                    30_000_000L, 15_000_000L, null, List.of()
+            );
+            RuntimeException decodingError = new RuntimeException(
+                    "Value must be in format 0x[0-9a-fA-F]+");
+            when(web3jBlock.getDifficulty()).thenThrow(decodingError);
+            when(web3jBlock.getTotalDifficulty()).thenThrow(decodingError);
+            when(web3jBlock.getNonce()).thenThrow(decodingError);
+            when(web3jBlock.getBaseFeePerGas()).thenThrow(decodingError);
+
+            IndexedBlock result = IndexedBlock.fromWeb3jBlock("polygon", 137L, web3jBlock);
+
+            // Block should still be created with null for the malformed fields
+            assertThat(result.getBlockNumber()).isEqualTo(100L);
+            assertThat(result.getChain()).isEqualTo("polygon");
+            assertThat(result.getGasLimit()).isEqualTo(30_000_000L);
+            assertThat(result.getGasUsed()).isEqualTo(15_000_000L);
+            assertThat(result.getDifficulty()).isNull();
+            assertThat(result.getTotalDifficulty()).isNull();
+            assertThat(result.getNonce()).isNull();
+            assertThat(result.getBaseFeePerGas()).isNull();
+        }
+
+        @Test
+        @DisplayName("should handle malformed hex in transaction gas price and value")
+        void handlesMalformedTxFields() {
+            // Transaction where getGasPrice() and getValue() throw
+            EthBlock.TransactionObject txObj = mock(EthBlock.TransactionObject.class);
+            when(txObj.getGasPrice()).thenThrow(new RuntimeException("Value must be in format 0x[0-9a-fA-F]+"));
+            when(txObj.getValue()).thenThrow(new RuntimeException("Value must be in format 0x[0-9a-fA-F]+"));
+
+            @SuppressWarnings("unchecked")
+            EthBlock.TransactionResult<EthBlock.TransactionObject> txResult = mock(EthBlock.TransactionResult.class);
+            when(txResult.get()).thenReturn(txObj);
+
+            @SuppressWarnings("unchecked")
+            List<EthBlock.TransactionResult<?>> txs = (List<EthBlock.TransactionResult<?>>) (List<?>) List.of(txResult);
+
+            EthBlock.Block web3jBlock = createMockBlock(
+                    100L, "0xa", "0xb", 1_000L, "0xm",
+                    30_000_000L, 15_000_000L, null, txs
+            );
+
+            IndexedBlock result = IndexedBlock.fromWeb3jBlock("arbitrum", 42161L, web3jBlock);
+
+            assertThat(result.getBlockNumber()).isEqualTo(100L);
+            assertThat(result.getTransactionCount()).isEqualTo(1);
+            assertThat(result.getAvgGasPrice()).isNull();
+            assertThat(result.getTotalValue()).isEqualTo("0");
         }
     }
 

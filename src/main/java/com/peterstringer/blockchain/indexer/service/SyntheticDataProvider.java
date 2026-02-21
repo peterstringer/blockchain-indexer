@@ -117,9 +117,10 @@ public class SyntheticDataProvider {
         Random rng = new Random(seed ^ blockNumber ^ chainId);
 
         // ---- Block header ----
-        long baseTimestamp = 1_700_000_000L + (blockNumber * BLOCK_TIME_SECONDS);
+        long baseTimestampSec = 1_700_000_000L + (blockNumber * BLOCK_TIME_SECONDS);
         long jitter = rng.nextLong(-2, 3);
-        long timestamp = baseTimestamp + jitter;
+        long timestampSec = baseTimestampSec + jitter;
+        long timestamp = timestampSec * 1000L; // epoch millis for storage
 
         String blockHash = randomHash(rng);
         String parentHash = randomHash(new Random(seed ^ (blockNumber - 1) ^ chainId));
@@ -128,7 +129,7 @@ public class SyntheticDataProvider {
         double fillRate = 0.60 + (rng.nextDouble() * 0.35);
         long gasUsed = (long) (GAS_LIMIT * fillRate);
 
-        long baseFee = computeBaseFee(timestamp, rng);
+        long baseFee = computeBaseFee(timestampSec, rng);
         boolean isCongested = rng.nextDouble() < 0.05;
         if (isCongested) {
             baseFee *= 2;
