@@ -106,3 +106,62 @@ export interface GasPriceAggregation {
   maxGasPrice: number;
   blockCount: number;
 }
+
+// ---- Historical Analytics Response Types ----
+
+/** Response from GET /api/analytics/historical/gas-prices/daily */
+export interface DailyGasPrice {
+  chain: string;
+  date: string;
+  avgBaseFee: number | null;
+  minBaseFee: number | null;
+  maxBaseFee: number | null;
+  avgGasPrice: number | null;
+}
+
+/** Response from GET /api/analytics/historical/gas-prices/hourly */
+export interface HourlyGasPattern {
+  chain: string;
+  hour: number;
+  avgBaseFee: number | null;
+  avgGasPrice: number | null;
+}
+
+/** Response from GET /api/analytics/historical/block-fullness */
+export interface BlockFullness {
+  chain: string;
+  avgFullness: number;
+  minFullness: number;
+  maxFullness: number;
+  blockCount: number;
+}
+
+/** Response from GET /api/analytics/historical/cross-chain */
+export interface CrossChainComparison {
+  chain: string;
+  avgTxCount: number;
+  avgGasPrice: number | null;
+  avgBaseFee: number | null;
+  totalTxs: number;
+  blockCount: number;
+}
+
+/** Response from GET /api/analytics/historical/transaction-types */
+export interface TransactionTypeAnalysis {
+  chain: string;
+  totalLegacy: number;
+  totalEip1559: number;
+  totalContract: number;
+  totalFailed: number;
+  avgGasLegacy: number | null;
+  avgGasEip1559: number | null;
+  avgGasContract: number | null;
+}
+
+/** Response from GET /api/analytics/historical/data-availability */
+export interface DataAvailability {
+  chain: string;
+  earliestDate: string;
+  latestDate: string;
+  blockCount: number;
+}

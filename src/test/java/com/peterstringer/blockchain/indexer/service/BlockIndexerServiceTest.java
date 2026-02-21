@@ -59,6 +59,9 @@ class BlockIndexerServiceTest {
     @Mock
     private WebSocketService webSocketService;
 
+    @Mock
+    private BlockAnalyticsService blockAnalyticsService;
+
     private IndexerProperties properties;
     private BlockIndexerService service;
 
@@ -107,7 +110,7 @@ class BlockIndexerServiceTest {
         service = new BlockIndexerService(
                 properties, rpcClientService, parquetWriterService,
                 checkpointRepository, metricsRepository, webSocketService,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), blockAnalyticsService);
         service.initialize();
     }
 

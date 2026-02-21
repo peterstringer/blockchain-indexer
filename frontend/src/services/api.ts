@@ -5,6 +5,12 @@ import type {
   StopIndexingRequest,
   GasPriceAggregation,
   IndexerCheckpoint,
+  DailyGasPrice,
+  HourlyGasPattern,
+  BlockFullness,
+  CrossChainComparison,
+  TransactionTypeAnalysis,
+  DataAvailability,
 } from "@/types";
 
 const BASE = "/api";
@@ -56,4 +62,54 @@ export function fetchGasPrices(chain?: string): Promise<GasPriceAggregation[]> {
 /** GET /api/indexer/checkpoints */
 export function fetchCheckpoints(): Promise<IndexerCheckpoint[]> {
   return request("/indexer/checkpoints");
+}
+
+// ---- Historical Analytics API ----
+
+/** GET /api/analytics/historical/gas-prices/daily */
+export function fetchDailyGasPrices(
+  from: string, to: string, chain?: string
+): Promise<DailyGasPrice[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/gas-prices/daily?${params}`);
+}
+
+/** GET /api/analytics/historical/gas-prices/hourly */
+export function fetchHourlyGasPatterns(
+  from: string, to: string, chain?: string
+): Promise<HourlyGasPattern[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/gas-prices/hourly?${params}`);
+}
+
+/** GET /api/analytics/historical/block-fullness */
+export function fetchBlockFullness(
+  from: string, to: string
+): Promise<BlockFullness[]> {
+  const params = new URLSearchParams({ from, to });
+  return request(`/analytics/historical/block-fullness?${params}`);
+}
+
+/** GET /api/analytics/historical/cross-chain */
+export function fetchCrossChainComparison(
+  from: string, to: string
+): Promise<CrossChainComparison[]> {
+  const params = new URLSearchParams({ from, to });
+  return request(`/analytics/historical/cross-chain?${params}`);
+}
+
+/** GET /api/analytics/historical/transaction-types */
+export function fetchTransactionTypeAnalysis(
+  from: string, to: string, chain?: string
+): Promise<TransactionTypeAnalysis[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/transaction-types?${params}`);
+}
+
+/** GET /api/analytics/historical/data-availability */
+export function fetchDataAvailability(): Promise<DataAvailability[]> {
+  return request("/analytics/historical/data-availability");
 }
