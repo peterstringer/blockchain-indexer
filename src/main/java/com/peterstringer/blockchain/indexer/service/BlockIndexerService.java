@@ -166,6 +166,7 @@ public class BlockIndexerService {
     private final MetricsRepository metricsRepository;
     private final WebSocketService webSocketService;
     private final MeterRegistry meterRegistry;
+    private final BlockAnalyticsService blockAnalyticsService;
 
     // ---- Thread pools ----
     private ExecutorService chainExecutor;
@@ -184,7 +185,8 @@ public class BlockIndexerService {
                                CheckpointRepository checkpointRepository,
                                MetricsRepository metricsRepository,
                                WebSocketService webSocketService,
-                               MeterRegistry meterRegistry) {
+                               MeterRegistry meterRegistry,
+                               BlockAnalyticsService blockAnalyticsService) {
         this.properties = properties;
         this.rpcClientService = rpcClientService;
         this.parquetWriterService = parquetWriterService;
@@ -192,6 +194,7 @@ public class BlockIndexerService {
         this.metricsRepository = metricsRepository;
         this.webSocketService = webSocketService;
         this.meterRegistry = meterRegistry;
+        this.blockAnalyticsService = blockAnalyticsService;
     }
 
     // =========================================================================
@@ -481,6 +484,9 @@ public class BlockIndexerService {
                 // Write blocks + embedded transactions to Parquet
                 parquetWriterService.writeBlocks(blocks);
 
+                // Persist block analytics to PostgreSQL for historical dashboard
+                blockAnalyticsService.persistBatch(blocks);
+
                 // Update counters
                 long txCount = blocks.stream()
                         .mapToInt(b -> b.getTransactions().size())
@@ -591,6 +597,9 @@ public class BlockIndexerService {
 
                     // Write to Parquet
                     parquetWriterService.writeBlocks(List.of(block));
+
+                    // Persist block analytics to PostgreSQL for historical dashboard
+                    blockAnalyticsService.persistBatch(List.of(block));
 
                     // Update state
                     long txCount = block.getTransactions().size();
