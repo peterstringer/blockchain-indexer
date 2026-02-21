@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link RpcClientService}, covering circuit breaker state
- * transitions, round-robin load balancing, rate limiting, retry logic,
+ * transitions, ordered-fallback provider selection, rate limiting, retry logic,
  * and demo mode behavior.
  *
  * <p>Direct Web3j RPC calls are not tested here; the circuit breaker and

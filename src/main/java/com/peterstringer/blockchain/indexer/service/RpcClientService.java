@@ -64,9 +64,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * scheduled task every second. Callers block for up to 5 seconds before
  * a rate-limit timeout is raised.
  *
- * <h2>Load Balancing</h2>
- * <p>Providers within a chain are selected via round-robin with health
- * filtering. If all providers are unhealthy, the least-recently-failed
+ * <h2>Provider Selection (Ordered Fallback)</h2>
+ * <p>Providers are tried in configuration order: the first URL is the
+ * primary, and subsequent URLs are fallbacks used only when all
+ * higher-priority providers have their circuit breakers OPEN.
+ * If all providers are unhealthy, the least-recently-failed
  * provider is promoted to HALF_OPEN for a recovery probe.
  *
  * <h2>Thread Safety</h2>
@@ -89,7 +91,6 @@ public class RpcClientService {
     private final boolean demoMode;
 
     private final ConcurrentHashMap<String, List<RpcProvider>> providersByChain = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, AtomicInteger> roundRobinCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Semaphore> rateLimiters = new ConcurrentHashMap<>();
 
     public RpcClientService(IndexerProperties properties,
@@ -127,7 +128,6 @@ public class RpcClientService {
                         chainKey, hashUrl(url));
             }
             providersByChain.put(chainKey, Collections.unmodifiableList(providers));
-            roundRobinCounters.put(chainKey, new AtomicInteger(0));
             rateLimiters.put(chainKey, new Semaphore(chainConfig.getRateLimitRequestsPerSecond()));
             log.info("Chain {} ready: {} provider(s), rate_limit={} req/s",
                     chainKey, providers.size(), chainConfig.getRateLimitRequestsPerSecond());
@@ -210,7 +210,16 @@ public class RpcClientService {
         IndexerProperties.ChainConfig config = getChainConfig(chain);
         return getBlocksAsync(chain, blockNumbers, executor)
                 .thenApply(blocks -> blocks.stream()
-                        .map(raw -> IndexedBlock.fromWeb3jBlock(chain, config.getChainId(), raw))
+                        .map(raw -> {
+                            try {
+                                return IndexedBlock.fromWeb3jBlock(chain, config.getChainId(), raw);
+                            } catch (Exception e) {
+                                log.error("Failed to convert block {} on chain={}: {}",
+                                        raw.getNumber(), chain, e.getMessage());
+                                return null;
+                            }
+                        })
+                        .filter(b -> b != null)
                         .toList());
     }
 
@@ -251,6 +260,13 @@ public class RpcClientService {
                 provider.recordSuccess();
                 log.debug("Fetched block {} from chain={} via url_hash={}", blockNumber, chain, provider.urlHash);
                 return block;
+            } catch (org.web3j.exceptions.MessageDecodingException e) {
+                // Data format error from RPC provider — not transient, don't retry
+                provider.recordFailure();
+                log.warn("Non-retryable decoding error for block {} on chain={} via url_hash={}: {}",
+                        blockNumber, chain, provider.urlHash, e.getMessage());
+                throw new RpcException("Decoding error for block %d on %s: %s"
+                        .formatted(blockNumber, chain, e.getMessage()), e);
             } catch (Exception e) {
                 provider.recordFailure();
                 log.warn("Attempt {}/{} failed for block {} on chain={} via url_hash={}: {}",
@@ -279,7 +295,7 @@ public class RpcClientService {
                 .map(num -> CompletableFuture.supplyAsync(() -> {
                     try {
                         return getBlockByNumber(chain, num);
-                    } catch (RpcException e) {
+                    } catch (Exception e) {
                         log.error("Failed to fetch block {} on chain={}: {}", num, chain, e.getMessage());
                         return null;
                     }
@@ -443,7 +459,9 @@ public class RpcClientService {
     // =========================================================================
 
     /**
-     * Selects a healthy provider for the given chain using round-robin.
+     * Selects a healthy provider for the given chain using ordered fallback.
+     * The first configured URL is the primary; subsequent URLs are only used
+     * when higher-priority providers have their circuit breakers OPEN.
      * If all providers are unhealthy, attempts to reset the least-recently-failed one.
      */
     RpcProvider selectHealthyProvider(String chain) {
@@ -452,13 +470,8 @@ public class RpcClientService {
             throw new RpcException("No providers configured for chain: " + chain);
         }
 
-        int size = providers.size();
-        AtomicInteger counter = roundRobinCounters.get(chain);
-
-        // Try each provider once via round-robin
-        for (int i = 0; i < size; i++) {
-            int index = Math.floorMod(counter.getAndIncrement(), size);
-            RpcProvider provider = providers.get(index);
+        // Try providers in configuration order (primary first, then fallbacks)
+        for (RpcProvider provider : providers) {
             if (provider.isHealthy()) {
                 return provider;
             }
