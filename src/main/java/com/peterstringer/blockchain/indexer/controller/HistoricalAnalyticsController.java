@@ -101,6 +101,28 @@ public class HistoricalAnalyticsController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Daily block fullness",
+               description = "Average gas utilization percentage per chain per day")
+    @GetMapping("/block-fullness/daily")
+    public ResponseEntity<List<Map<String, Object>>> getDailyBlockFullness(
+            @Parameter(description = "Chain filter (null = all chains)")
+            @RequestParam(required = false) String chain,
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findDailyBlockFullness(chain, from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("date", row[1].toString());
+            map.put("avgFullnessPercent", toDouble(row[2]));
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "Cross-chain comparison",
                description = "Average tx count and gas price by chain")
     @GetMapping("/cross-chain")

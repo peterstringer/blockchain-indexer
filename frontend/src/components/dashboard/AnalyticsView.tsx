@@ -2,7 +2,8 @@ import { useState, useCallback } from "react";
 import { Clock, Flame, Box, GitBranch, AlertTriangle, Grid3x3 } from "lucide-react";
 import { DateRangePicker } from "@/components/common/DateRangePicker";
 import { GasMarketChart } from "@/components/charts/historical/GasMarketChart";
-import { useDataAvailability, useGasMarket } from "@/hooks/useHistoricalAnalytics";
+import { BlockSpaceDemandChart } from "@/components/charts/historical/BlockSpaceDemandChart";
+import { useDataAvailability, useGasMarket, useDailyBlockFullness } from "@/hooks/useHistoricalAnalytics";
 import type { IndexerStatus } from "@/types";
 
 type Preset = "7d" | "30d" | "90d" | "all";
@@ -56,6 +57,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
 
   // Fetch panel data
   const { data: gasMarket } = useGasMarket(from, to, chain);
+  const { data: dailyFullness } = useDailyBlockFullness(from, to, chain);
 
   return (
     <div className="flex flex-col min-h-0">
@@ -108,8 +110,12 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<Box className="w-4 h-4" />}
             title="Block Space Demand"
-            placeholder="Block fullness (gas utilisation %) and cross-chain comparison of transaction counts and gas consumption."
-          />
+          >
+            <BlockSpaceDemandChart
+              fullnessData={dailyFullness ?? []}
+              gasMarketData={gasMarket ?? []}
+            />
+          </AnalyticsPanel>
 
           {/* 3. Transaction Type Evolution */}
           <AnalyticsPanel

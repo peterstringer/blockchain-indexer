@@ -3,6 +3,7 @@ import {
   fetchDailyGasPrices,
   fetchHourlyGasPatterns,
   fetchBlockFullness,
+  fetchDailyBlockFullness,
   fetchCrossChainComparison,
   fetchTransactionTypeAnalysis,
   fetchDataAvailability,
@@ -39,6 +40,15 @@ export function useBlockFullness(from: string, to: string) {
   return useQuery({
     queryKey: ["historical", "block-fullness", from, to],
     queryFn: () => fetchBlockFullness(from, to),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+  });
+}
+
+export function useDailyBlockFullness(from: string, to: string, chain?: string) {
+  return useQuery({
+    queryKey: ["historical", "block-fullness-daily", from, to, chain],
+    queryFn: () => fetchDailyBlockFullness(from, to, chain),
     enabled: !!from && !!to,
     staleTime: 60_000,
   });

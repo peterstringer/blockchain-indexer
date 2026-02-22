@@ -82,6 +82,25 @@ public interface BlockAnalyticsRepository extends JpaRepository<BlockAnalytics, 
                                      @Param("toDate") LocalDate toDate);
 
     /**
+     * Daily block fullness: average gas utilization percentage per chain per day.
+     *
+     * @return rows of [chain, block_date, avg_fullness]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   block_date,
+                   AVG(gas_used_percentage) AS avg_fullness
+              FROM block_analytics
+             WHERE (:chain IS NULL OR chain = :chain)
+               AND block_date BETWEEN :fromDate AND :toDate
+             GROUP BY chain, block_date
+             ORDER BY chain, block_date
+            """)
+    List<Object[]> findDailyBlockFullness(@Param("chain") String chain,
+                                          @Param("fromDate") LocalDate fromDate,
+                                          @Param("toDate") LocalDate toDate);
+
+    /**
      * Cross-chain comparison: avg tx count, gas price, base fee, totals per chain.
      *
      * @return rows of [chain, avg_tx_count, avg_gas_price, avg_base_fee, total_txs, block_count]
