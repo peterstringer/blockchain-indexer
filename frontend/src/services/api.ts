@@ -8,6 +8,7 @@ import type {
   DailyGasPrice,
   HourlyGasPattern,
   BlockFullness,
+  BlockFullnessDaily,
   CrossChainComparison,
   TransactionTypeAnalysis,
   DataAvailability,
@@ -91,6 +92,15 @@ export function fetchBlockFullness(
 ): Promise<BlockFullness[]> {
   const params = new URLSearchParams({ from, to });
   return request(`/analytics/historical/block-fullness?${params}`);
+}
+
+/** GET /api/analytics/historical/block-fullness/daily */
+export function fetchDailyBlockFullness(
+  from: string, to: string, chain?: string
+): Promise<BlockFullnessDaily[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/block-fullness/daily?${params}`);
 }
 
 /** GET /api/analytics/historical/cross-chain */

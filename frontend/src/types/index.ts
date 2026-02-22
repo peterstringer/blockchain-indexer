@@ -136,6 +136,13 @@ export interface BlockFullness {
   blockCount: number;
 }
 
+/** Response from GET /api/analytics/historical/block-fullness/daily */
+export interface BlockFullnessDaily {
+  chain: string;
+  date: string;
+  avgFullnessPercent: number | null;
+}
+
 /** Response from GET /api/analytics/historical/cross-chain */
 export interface CrossChainComparison {
   chain: string;
