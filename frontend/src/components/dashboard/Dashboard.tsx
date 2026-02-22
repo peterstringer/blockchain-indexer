@@ -1,9 +1,10 @@
+import { useState } from "react";
+import { ChevronDown, ChevronUp, Settings } from "lucide-react";
 import { OverviewBar } from "./OverviewBar";
 import { ChainCard } from "./ChainCard";
 import { BlockFeed } from "./BlockFeed";
 import { RpcHealthPanel } from "./RpcHealthPanel";
-import { ThroughputChart } from "@/components/charts/ThroughputChart";
-import { GasChart } from "@/components/charts/GasChart";
+import { ThroughputSparkline } from "@/components/charts/ThroughputSparkline";
 import { useChainUpdates, useProgressHistory } from "@/hooks/useWebSocket";
 import type { IndexerStatus, BlockIndexedMessage, RpcHealthMessage } from "@/types";
 
@@ -13,14 +14,16 @@ interface DashboardProps {
 
 export function Dashboard({ status }: DashboardProps) {
   const chainKeys = Object.keys(status.chains);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
     <div className="space-y-6">
       <OverviewBar status={status} />
 
+      {/* Chain cards + sparklines in a 3-column grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {chainKeys.map((key) => (
-          <ChainCard
+          <ChainColumn
             key={key}
             chainKey={key}
             chain={status.chains[key]!}
@@ -29,31 +32,54 @@ export function Dashboard({ status }: DashboardProps) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {chainKeys.map((key) => (
-          <ChainCharts key={key} chainKey={key} />
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <AggregatedBlockFeed chainKeys={chainKeys} />
-        </div>
-        <AggregatedRpcHealth chainKeys={chainKeys} />
+      {/* Collapsible System Details */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => setDetailsOpen(!detailsOpen)}
+          className="w-full flex items-center justify-between px-5 py-3 bg-bg-card hover:bg-bg-card-hover transition-colors"
+        >
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Settings className="w-4 h-4 text-text-muted" />
+            System Details
+          </div>
+          {detailsOpen ? (
+            <ChevronUp className="w-4 h-4 text-text-muted" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-text-muted" />
+          )}
+        </button>
+        {detailsOpen && (
+          <div className="p-4 bg-bg-card border-t border-border animate-in fade-in duration-200">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <AggregatedBlockFeed chainKeys={chainKeys} />
+              </div>
+              <AggregatedRpcHealth chainKeys={chainKeys} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ChainCharts({ chainKey }: { chainKey: string }) {
-  const { recentBlocks } = useChainUpdates(chainKey);
+/** A single column: chain card on top, sparkline directly beneath */
+function ChainColumn({
+  chainKey,
+  chain,
+  isRunning,
+}: {
+  chainKey: string;
+  chain: IndexerStatus["chains"][string];
+  isRunning: boolean;
+}) {
   const history = useProgressHistory(chainKey);
 
   return (
-    <>
-      <ThroughputChart chain={chainKey} history={history} />
-      <GasChart chain={chainKey} blocks={recentBlocks} />
-    </>
+    <div className="flex flex-col gap-2">
+      <ChainCard chainKey={chainKey} chain={chain} isRunning={isRunning} />
+      <ThroughputSparkline chain={chainKey} history={history} />
+    </div>
   );
 }
 

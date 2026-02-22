@@ -63,3 +63,26 @@ export function getChainIcon(chain: string): string {
   };
   return icons[chain.toLowerCase()] ?? chain.slice(0, 3).toUpperCase();
 }
+
+/** Get expected block time in milliseconds for a chain */
+export function getChainBlockTimeMs(chain: string): number {
+  const times: Record<string, number> = {
+    ethereum: 12_000,
+    polygon: 2_000,
+    arbitrum: 250,
+  };
+  return times[chain.toLowerCase()] ?? 12_000;
+}
+
+/** Format a duration in milliseconds to a human-readable string */
+export function formatDuration(ms: number): string {
+  if (ms < 1_000) return "<1s";
+  const seconds = Math.floor(ms / 1_000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
