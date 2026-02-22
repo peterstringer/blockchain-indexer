@@ -66,6 +66,10 @@ public class IndexerProperties {
 
         @Positive
         private int rateLimitRequestsPerSecond = 10;
+
+        /** Expected block time in milliseconds (used by SyntheticDataProvider for realistic timing). */
+        @Positive
+        private long blockTimeMs = 12_000;
     }
 
     // -------------------------------------------------

@@ -64,6 +64,7 @@ indexer:
       max-retries-per-block: 3
       retry-delay-ms: 1000
       rate-limit-requests-per-second: 10
+      block-time-ms: 12000
 
     polygon:
       name: Polygon
@@ -76,6 +77,7 @@ indexer:
       max-retries-per-block: 3
       retry-delay-ms: 1000
       rate-limit-requests-per-second: 10
+      block-time-ms: 2000
 
     arbitrum:
       name: Arbitrum
@@ -88,6 +90,7 @@ indexer:
       max-retries-per-block: 3
       retry-delay-ms: 1000
       rate-limit-requests-per-second: 10
+      block-time-ms: 250
 
   concurrency:
     worker-threads: 10

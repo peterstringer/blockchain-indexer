@@ -58,8 +58,8 @@ services:
       # Parquet output
       PARQUET_OUTPUT_PATH: /app/output
 
-      # Demo mode (disabled for production)
-      DEMO_MODE: "false"
+      # Demo mode (disabled for production, override via DEMO_MODE env var)
+      DEMO_MODE: "${DEMO_MODE:-false}"
     volumes:
       - parquet_output:/app/output
     depends_on:

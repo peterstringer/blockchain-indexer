@@ -69,7 +69,6 @@ public class SyntheticDataProvider {
 
     // ---- Ethereum constants ----
     private static final long GAS_LIMIT = 30_000_000L;
-    private static final long BLOCK_TIME_SECONDS = 12L;
     private static final long GWEI = 1_000_000_000L;
     private static final long ETH_IN_WEI = 1_000_000_000_000_000_000L;
 
@@ -117,9 +116,21 @@ public class SyntheticDataProvider {
         Random rng = new Random(seed ^ blockNumber ^ chainId);
 
         // ---- Block header ----
-        long baseTimestampSec = 1_700_000_000L + (blockNumber * BLOCK_TIME_SECONDS);
-        long jitter = rng.nextLong(-2, 3);
-        long timestampSec = baseTimestampSec + jitter;
+        // Use per-chain block time with ±10% jitter for realistic inter-block intervals
+        long blockTimeMs = chainConfig.getBlockTimeMs();
+        long blockTimeSec = blockTimeMs / 1000;
+        long baseTimestampSec;
+        if (blockTimeSec > 0) {
+            baseTimestampSec = 1_700_000_000L + (blockNumber * blockTimeSec);
+        } else {
+            // Sub-second chains (e.g. Arbitrum 250ms): compute from millis, convert to seconds
+            long baseTimestampMs = 1_700_000_000_000L + (blockNumber * blockTimeMs);
+            baseTimestampSec = baseTimestampMs / 1000;
+        }
+        // ±10% jitter relative to block time
+        long jitterMs = (long) ((rng.nextDouble() - 0.5) * 0.20 * blockTimeMs);
+        long jitterSec = jitterMs / 1000;
+        long timestampSec = baseTimestampSec + jitterSec;
         long timestamp = timestampSec * 1000L; // epoch millis for storage
 
         String blockHash = randomHash(rng);

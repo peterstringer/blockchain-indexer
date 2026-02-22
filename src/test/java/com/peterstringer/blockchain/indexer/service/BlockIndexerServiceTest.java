@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -146,7 +147,7 @@ class BlockIndexerServiceTest {
             // Set up mocks for a successful start
             when(checkpointRepository.findByChain("ethereum"))
                     .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.completedFuture(Collections.emptyList()));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
