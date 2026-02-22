@@ -21,6 +21,15 @@ export function formatGwei(gwei: number | null | undefined): string {
   return `${gwei.toFixed(2)} Gwei`;
 }
 
+/** Format ISO date string to short label: "2024-12-01" → "01 Dec" */
+export function formatDateShort(dateStr: string): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const parts = dateStr.split("-");
+  const monthIdx = parseInt(parts[1]!, 10) - 1;
+  const month = months[monthIdx] ?? "???";
+  return `${parts[2]} ${month}`;
+}
+
 /** Truncate a hex hash: 0xabcdef123456... -> 0xabcd...3456 */
 export function truncateHash(hash: string, chars = 4): string {
   if (!hash) return "";

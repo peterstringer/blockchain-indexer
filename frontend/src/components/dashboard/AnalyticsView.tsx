@@ -59,11 +59,11 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
   const hasData = availability && availability.length > 0;
 
   // Fetch panel data
-  const { data: gasMarket } = useGasMarket(from, to, chain);
-  const { data: dailyFullness } = useDailyBlockFullness(from, to, chain);
-  const { data: dailyTxTypes } = useDailyTransactionTypes(from, to, chain);
-  const { data: dailyFailure } = useDailyFailureRate(from, to, chain);
-  const { data: txDensity } = useTxDensityHeatmap(from, to, chain);
+  const { data: gasMarket, isLoading: gasMarketLoading } = useGasMarket(from, to, chain);
+  const { data: dailyFullness, isLoading: fullnessLoading } = useDailyBlockFullness(from, to, chain);
+  const { data: dailyTxTypes, isLoading: txTypesLoading } = useDailyTransactionTypes(from, to, chain);
+  const { data: dailyFailure, isLoading: failureLoading } = useDailyFailureRate(from, to, chain);
+  const { data: txDensity, isLoading: densityLoading } = useTxDensityHeatmap(from, to, chain);
 
   return (
     <div className="flex flex-col min-h-0">
@@ -108,6 +108,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<Flame className="w-4 h-4" />}
             title="Gas Market"
+            loading={gasMarketLoading}
           >
             <GasMarketChart data={gasMarket ?? []} selectedChain={chain} />
           </AnalyticsPanel>
@@ -116,6 +117,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<Box className="w-4 h-4" />}
             title="Block Space Demand"
+            loading={fullnessLoading || gasMarketLoading}
           >
             <BlockSpaceDemandChart
               fullnessData={dailyFullness ?? []}
@@ -127,6 +129,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<GitBranch className="w-4 h-4" />}
             title="Transaction Type Evolution"
+            loading={txTypesLoading}
           >
             <TxTypeEvolutionChart data={dailyTxTypes ?? []} />
           </AnalyticsPanel>
@@ -136,6 +139,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
             icon={<AlertTriangle className="w-4 h-4" />}
             title="Failure Analysis"
             subtitle="Overlay of failed transaction rate and gas price to identify correlation during congestion periods."
+            loading={failureLoading}
           >
             <FailureAnalysisChart data={dailyFailure ?? []} />
           </AnalyticsPanel>
@@ -144,6 +148,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<Grid3x3 className="w-4 h-4" />}
             title="Transaction Density Heatmap"
+            loading={densityLoading}
           >
             <TxDensityHeatmap data={txDensity ?? []} />
           </AnalyticsPanel>
@@ -157,13 +162,13 @@ function AnalyticsPanel({
   icon,
   title,
   subtitle,
-  placeholder,
+  loading,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
-  placeholder?: string;
+  loading?: boolean;
   children?: React.ReactNode;
 }) {
   return (
@@ -177,14 +182,40 @@ function AnalyticsPanel({
           <p className="text-[11px] text-text-muted mt-1 ml-6">{subtitle}</p>
         )}
       </div>
-      {children ?? (
-        <div>
-          <p className="text-xs text-text-muted leading-relaxed mb-4">{placeholder}</p>
-          <div className="flex items-center justify-center h-48 rounded-lg border border-dashed border-border">
-            <span className="text-xs text-text-muted">Chart placeholder</span>
-          </div>
+      {loading ? <ChartSkeleton /> : children}
+    </div>
+  );
+}
+
+const SKELETON_HEIGHTS = [42, 58, 52, 67, 61, 74, 69, 78, 72, 55, 64, 57, 46, 53, 62, 70, 75, 67, 59, 51, 40, 49, 56, 63];
+
+function ChartSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="h-80 flex gap-1">
+        {/* Y-axis labels */}
+        <div className="w-10 flex flex-col justify-between py-3">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="h-1.5 w-7 bg-border/30 rounded" />
+          ))}
         </div>
-      )}
+        {/* Chart area */}
+        <div className="flex-1 flex items-end gap-[3px] border-l border-b border-border/20 px-2">
+          {SKELETON_HEIGHTS.map((h, i) => (
+            <div
+              key={i}
+              className="flex-1 rounded-t-sm bg-border/20"
+              style={{ height: `${h}%` }}
+            />
+          ))}
+        </div>
+      </div>
+      {/* X-axis labels */}
+      <div className="flex justify-between mt-2 ml-11">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="h-1.5 w-8 bg-border/30 rounded" />
+        ))}
+      </div>
     </div>
   );
 }
