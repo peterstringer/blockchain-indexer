@@ -165,3 +165,14 @@ export interface DataAvailability {
   latestDate: string;
   blockCount: number;
 }
+
+/** Response from GET /api/analytics/historical/gas-market */
+export interface GasMarketDaily {
+  chain: string;
+  date: string;
+  avgBaseFeeGwei: number | null;
+  avgEffectiveGasPriceGwei: number | null;
+  avgPriorityFeeGwei: number | null;
+  minBaseFeeGwei: number | null;
+  maxBaseFeeGwei: number | null;
+}

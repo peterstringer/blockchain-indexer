@@ -11,6 +11,7 @@ import type {
   CrossChainComparison,
   TransactionTypeAnalysis,
   DataAvailability,
+  GasMarketDaily,
 } from "@/types";
 
 const BASE = "/api";
@@ -112,4 +113,13 @@ export function fetchTransactionTypeAnalysis(
 /** GET /api/analytics/historical/data-availability */
 export function fetchDataAvailability(): Promise<DataAvailability[]> {
   return request("/analytics/historical/data-availability");
+}
+
+/** GET /api/analytics/historical/gas-market */
+export function fetchGasMarket(
+  from: string, to: string, chain?: string
+): Promise<GasMarketDaily[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/gas-market?${params}`);
 }
