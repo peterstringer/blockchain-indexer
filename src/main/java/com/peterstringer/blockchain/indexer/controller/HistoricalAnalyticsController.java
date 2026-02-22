@@ -122,6 +122,32 @@ public class HistoricalAnalyticsController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Cross-chain comparison with normalised metrics",
+               description = "Includes throughput (tx/sec), block utilisation, and failure rate alongside base metrics")
+    @GetMapping("/cross-chain-normalised")
+    public ResponseEntity<List<Map<String, Object>>> getCrossChainNormalised(
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findCrossChainNormalised(from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("avgTxCount", toDouble(row[1]));
+            map.put("avgGasPrice", toDouble(row[2]));
+            map.put("avgBaseFee", toDouble(row[3]));
+            map.put("totalTxs", ((Number) row[4]).longValue());
+            map.put("blockCount", ((Number) row[5]).longValue());
+            map.put("avgTxPerSecond", toDouble(row[6]));
+            map.put("avgBlockUtilisationPercent", toDouble(row[7]));
+            map.put("failureRatePercent", toDouble(row[8]));
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "Transaction type analysis",
                description = "Count and avg gas by tx type (legacy, EIP-1559, contract creation)")
     @GetMapping("/transaction-types")
@@ -141,6 +167,81 @@ public class HistoricalAnalyticsController {
             map.put("avgGasLegacy", toDouble(row[5]));
             map.put("avgGasEip1559", toDouble(row[6]));
             map.put("avgGasContract", toDouble(row[7]));
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Gas market daily",
+               description = "Daily base fee, effective gas price, and priority fee trends")
+    @GetMapping("/gas-market")
+    public ResponseEntity<List<Map<String, Object>>> getGasMarket(
+            @Parameter(description = "Chain filter (null = all chains)")
+            @RequestParam(required = false) String chain,
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findGasMarketDaily(chain, from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("date", row[1].toString());
+            map.put("avgBaseFeeGwei", toDouble(row[2]));
+            map.put("avgEffectiveGasPriceGwei", toDouble(row[3]));
+            map.put("avgPriorityFeeGwei", toDouble(row[4]));
+            map.put("minBaseFeeGwei", toDouble(row[5]));
+            map.put("maxBaseFeeGwei", toDouble(row[6]));
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Daily failure rate",
+               description = "Daily failed transaction rate with gas price for correlation analysis")
+    @GetMapping("/failure-rate")
+    public ResponseEntity<List<Map<String, Object>>> getFailureRate(
+            @Parameter(description = "Chain filter (null = all chains)")
+            @RequestParam(required = false) String chain,
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findDailyFailureRate(chain, from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("date", row[1].toString());
+            map.put("totalTransactions", ((Number) row[2]).longValue());
+            map.put("failedTransactions", ((Number) row[3]).longValue());
+            map.put("failureRatePercent", toDouble(row[4]));
+            map.put("avgGasPriceGwei", toDouble(row[5]));
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Transaction density heatmap",
+               description = "Average transaction count by day-of-week (0=Sun..6=Sat) and hour (0-23)")
+    @GetMapping("/tx-density-heatmap")
+    public ResponseEntity<List<Map<String, Object>>> getTxDensityHeatmap(
+            @Parameter(description = "Chain filter (null = all chains)")
+            @RequestParam(required = false) String chain,
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findTxDensityHeatmap(chain, from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("dayOfWeek", ((Number) row[1]).intValue());
+            map.put("hour", ((Number) row[2]).intValue());
+            map.put("avgTransactionCount", toDouble(row[3]));
+            map.put("totalBlocks", ((Number) row[4]).longValue());
             return map;
         }).toList();
         return ResponseEntity.ok(result);

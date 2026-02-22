@@ -102,6 +102,30 @@ public interface BlockAnalyticsRepository extends JpaRepository<BlockAnalytics, 
                                             @Param("toDate") LocalDate toDate);
 
     /**
+     * Cross-chain comparison with normalised metrics: throughput, utilisation, failure rate.
+     *
+     * @return rows of [chain, avg_tx_count, avg_gas_price, avg_base_fee, total_txs, block_count,
+     *                   avg_tx_per_second, avg_block_utilisation_pct, failure_rate_pct]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   AVG(transaction_count)                                             AS avg_tx_count,
+                   AVG(avg_gas_price_gwei)                                            AS avg_gas_price,
+                   AVG(base_fee_gwei)                                                 AS avg_base_fee,
+                   SUM(transaction_count)                                             AS total_txs,
+                   COUNT(*)                                                           AS block_count,
+                   AVG(transaction_count / NULLIF(actual_block_time_ms / 1000.0, 0))  AS avg_tx_per_second,
+                   AVG(gas_used_percentage)                                           AS avg_block_utilisation_pct,
+                   SUM(tx_count_failed) * 100.0 / NULLIF(SUM(transaction_count), 0)  AS failure_rate_pct
+              FROM block_analytics
+             WHERE block_date BETWEEN :fromDate AND :toDate
+             GROUP BY chain
+             ORDER BY chain
+            """)
+    List<Object[]> findCrossChainNormalised(@Param("fromDate") LocalDate fromDate,
+                                            @Param("toDate") LocalDate toDate);
+
+    /**
      * Transaction type analysis: counts and average gas by type per chain.
      *
      * @return rows of [chain, total_legacy, total_eip1559, total_contract, total_failed,
@@ -125,6 +149,76 @@ public interface BlockAnalyticsRepository extends JpaRepository<BlockAnalytics, 
     List<Object[]> findTransactionTypeAnalysis(@Param("chain") String chain,
                                                @Param("fromDate") LocalDate fromDate,
                                                @Param("toDate") LocalDate toDate);
+
+    /**
+     * Gas market daily: avg base fee, effective gas price, priority fee, and min/max base fee.
+     *
+     * @return rows of [chain, block_date, avg_base_fee, avg_effective_gas_price, avg_priority_fee,
+     *                   min_base_fee, max_base_fee]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   block_date,
+                   AVG(base_fee_gwei)            AS avg_base_fee,
+                   AVG(avg_gas_price_gwei)        AS avg_effective_gas_price,
+                   AVG(avg_priority_fee_gwei)     AS avg_priority_fee,
+                   MIN(base_fee_gwei)             AS min_base_fee,
+                   MAX(base_fee_gwei)             AS max_base_fee
+              FROM block_analytics
+             WHERE (:chain IS NULL OR chain = :chain)
+               AND block_date BETWEEN :fromDate AND :toDate
+             GROUP BY chain, block_date
+             ORDER BY chain, block_date
+            """)
+    List<Object[]> findGasMarketDaily(@Param("chain") String chain,
+                                      @Param("fromDate") LocalDate fromDate,
+                                      @Param("toDate") LocalDate toDate);
+
+    /**
+     * Daily failure rate: total txs, failed txs, failure %, and avg gas price.
+     *
+     * @return rows of [chain, block_date, total_txs, failed_txs, failure_rate_pct, avg_gas_price]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   block_date,
+                   SUM(transaction_count)                                    AS total_txs,
+                   SUM(tx_count_failed)                                      AS failed_txs,
+                   CASE WHEN SUM(transaction_count) > 0
+                        THEN SUM(tx_count_failed) * 100.0 / SUM(transaction_count)
+                        ELSE 0 END                                           AS failure_rate_pct,
+                   AVG(avg_gas_price_gwei)                                   AS avg_gas_price
+              FROM block_analytics
+             WHERE (:chain IS NULL OR chain = :chain)
+               AND block_date BETWEEN :fromDate AND :toDate
+             GROUP BY chain, block_date
+             ORDER BY chain, block_date
+            """)
+    List<Object[]> findDailyFailureRate(@Param("chain") String chain,
+                                        @Param("fromDate") LocalDate fromDate,
+                                        @Param("toDate") LocalDate toDate);
+
+    /**
+     * Transaction density heatmap: avg tx count by day-of-week × hour-of-day.
+     *
+     * @return rows of [chain, block_day_of_week, block_hour, avg_tx_count, total_blocks]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   block_day_of_week,
+                   block_hour,
+                   AVG(transaction_count) AS avg_tx_count,
+                   COUNT(*)              AS total_blocks
+              FROM block_analytics
+             WHERE (:chain IS NULL OR chain = :chain)
+               AND block_date BETWEEN :fromDate AND :toDate
+               AND block_day_of_week IS NOT NULL
+             GROUP BY chain, block_day_of_week, block_hour
+             ORDER BY chain, block_day_of_week, block_hour
+            """)
+    List<Object[]> findTxDensityHeatmap(@Param("chain") String chain,
+                                        @Param("fromDate") LocalDate fromDate,
+                                        @Param("toDate") LocalDate toDate);
 
     /**
      * Data availability: earliest/latest dates and block counts per chain.
