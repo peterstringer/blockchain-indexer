@@ -1,32 +1,19 @@
-import { useState } from "react";
-import {
-  Layers,
-  ArrowUpDown,
-  Zap,
-  Shield,
-  Play,
-  Square,
-  ChevronDown,
-  ChevronUp,
-  Hash,
-  Clock,
-} from "lucide-react";
-import { Card, CardHeader } from "@/components/common/Card";
-import { ProgressBar } from "@/components/common/ProgressBar";
+import { Play, Square, Zap, Signal } from "lucide-react";
+import { Card } from "@/components/common/Card";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { MetricValue } from "@/components/common/MetricValue";
 import { useChainUpdates } from "@/hooks/useWebSocket";
 import { useStartIndexing, useStopIndexing } from "@/hooks/useIndexerStatus";
 import type { ChainStatus } from "@/types";
 import { isRpcHealthObject } from "@/types";
 import {
   formatNumber,
-  formatBlock,
   formatRate,
+  formatDuration,
   progressPercent,
   getChainColor,
   getChainDisplayName,
   getChainIcon,
+  getChainBlockTimeMs,
 } from "@/utils/format";
 
 interface ChainCardProps {
@@ -36,178 +23,147 @@ interface ChainCardProps {
 }
 
 export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const { progress, rpcHealth } = useChainUpdates(chainKey);
   const startMutation = useStartIndexing();
   const stopMutation = useStopIndexing();
 
   const currentBlock = progress?.currentBlock ?? chain.lastBlock ?? 0;
-  const target = progress?.latestBlock ?? chain.targetBlock ?? 0;
+  const latestBlock = progress?.latestBlock ?? chain.targetBlock ?? 0;
   const bps = progress?.blocksPerSecond ?? chain.blocksPerSecond ?? 0;
-  const percent = progressPercent(currentBlock, target);
+  const percent = progressPercent(currentBlock, latestBlock);
   const color = getChainColor(chainKey);
-  const eta = progress?.estimatedTimeRemaining ?? null;
 
+  // Lag calculation
+  const lagBlocks = Math.max(0, latestBlock - currentBlock);
+  const lagMs = lagBlocks * getChainBlockTimeMs(chainKey);
+  const lagColorClass =
+    lagBlocks < 10
+      ? "text-accent-green"
+      : lagBlocks <= 100
+        ? "text-accent-amber"
+        : "text-accent-red";
+
+  // RPC health (prefer WebSocket data, fall back to REST status)
   const rpcObj = isRpcHealthObject(chain.rpcHealth) ? chain.rpcHealth : null;
-  const healthyProviders = rpcObj?.healthyProviders ?? 0;
-  const totalProviders = rpcObj?.totalProviders ?? 0;
+  const wsHealthy = rpcHealth?.providersHealthy ?? rpcObj?.healthyProviders ?? 0;
+  const wsTotal = rpcHealth?.providersTotal ?? rpcObj?.totalProviders ?? 0;
+  const rpcDotClass =
+    wsTotal === 0
+      ? "bg-accent-amber"
+      : wsHealthy === wsTotal
+        ? "bg-accent-green"
+        : wsHealthy > 0
+          ? "bg-accent-amber"
+          : "bg-accent-red";
+  const rpcLabel =
+    wsTotal === 0
+      ? "No providers"
+      : wsHealthy === wsTotal
+        ? `${wsHealthy}/${wsTotal} healthy`
+        : wsHealthy > 0
+          ? `${wsHealthy}/${wsTotal} degraded`
+          : `${wsHealthy}/${wsTotal} down`;
 
   const chainStatus = isRunning && bps > 0 ? "running" : isRunning ? "info" : "stopped";
 
   return (
     <Card className="flex flex-col" hover>
-      <CardHeader
-        title=""
-        action={
-          <div className="flex items-center gap-2">
-            <StatusBadge status={chainStatus} size="sm" label={isRunning ? "Indexing" : "Idle"} />
-            {isRunning ? (
-              <button
-                onClick={() => stopMutation.mutate({ chain: chainKey })}
-                disabled={stopMutation.isPending}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-accent-red/10 text-accent-red border border-accent-red/20 hover:bg-accent-red/20 transition-colors disabled:opacity-50"
-              >
-                <Square className="w-3 h-3" />
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={() => startMutation.mutate({ chain: chainKey, mode: "BACKFILL" })}
-                disabled={startMutation.isPending}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-accent-green/10 text-accent-green border border-accent-green/20 hover:bg-accent-green/20 transition-colors disabled:opacity-50"
-              >
-                <Play className="w-3 h-3" />
-                Start
-              </button>
+      {/* Header: chain icon + name + status + controls */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+            style={{ backgroundColor: color }}
+          >
+            {getChainIcon(chainKey)}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {getChainDisplayName(chainKey)}
+            </h3>
+            {chain.chainId != null && (
+              <span className="text-xs text-text-muted">Chain ID: {chain.chainId}</span>
             )}
           </div>
-        }
-      />
-
-      {/* Chain title with icon */}
-      <div className="flex items-center gap-3 -mt-3 mb-3">
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-          style={{ backgroundColor: color }}
-        >
-          {getChainIcon(chainKey)}
         </div>
-        <div>
-          <h3 className="text-sm font-semibold text-text-primary">
-            {getChainDisplayName(chainKey)}
-          </h3>
-          {chain.chainId != null && (
-            <span className="text-xs text-text-muted">Chain ID: {chain.chainId}</span>
+        <div className="flex items-center gap-2">
+          <StatusBadge status={chainStatus} size="sm" label={isRunning ? "Indexing" : "Idle"} />
+          {isRunning ? (
+            <button
+              onClick={() => stopMutation.mutate({ chain: chainKey })}
+              disabled={stopMutation.isPending}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-accent-red/10 text-accent-red border border-accent-red/20 hover:bg-accent-red/20 transition-colors disabled:opacity-50"
+            >
+              <Square className="w-3 h-3" />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={() => startMutation.mutate({ chain: chainKey, mode: "BACKFILL" })}
+              disabled={startMutation.isPending}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-accent-green/10 text-accent-green border border-accent-green/20 hover:bg-accent-green/20 transition-colors disabled:opacity-50"
+            >
+              <Play className="w-3 h-3" />
+              Start
+            </button>
           )}
         </div>
       </div>
 
-      <ProgressBar percent={percent} color={color} eta={eta} />
-
-      <div className="grid grid-cols-2 gap-4 mt-4">
-        <MetricValue
-          label="Current Block"
-          value={formatBlock(currentBlock)}
-          icon={<Layers className="w-3 h-3" />}
-        />
-        <MetricValue
-          label="Target Block"
-          value={formatBlock(target)}
-          icon={<Layers className="w-3 h-3" />}
-        />
-        <MetricValue
-          label="Blocks Indexed"
-          value={formatNumber(chain.blocksIndexed)}
-          icon={<ArrowUpDown className="w-3 h-3" />}
-        />
-        <MetricValue
-          label="Throughput"
-          value={formatRate(bps)}
-          icon={<Zap className="w-3 h-3" />}
-        />
+      {/* Progress bar */}
+      <div className="mb-4">
+        <div className="flex justify-between mb-1">
+          <span className="text-xs text-text-muted">
+            {formatNumber(currentBlock)} / {formatNumber(latestBlock)}
+          </span>
+          <span className="text-xs font-mono text-text-secondary">
+            {percent.toFixed(1)}%
+          </span>
+        </div>
+        <div className="w-full h-2 bg-bg-primary rounded-full overflow-hidden">
+          <div
+            className="h-2 rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${Math.min(100, Math.max(0, percent))}%`, backgroundColor: color }}
+          />
+        </div>
       </div>
 
-      {/* Expand toggle */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-center gap-1 mt-4 pt-3 border-t border-border/50 text-xs text-text-muted hover:text-text-secondary transition-colors"
-      >
-        {expanded ? (
-          <>
-            <ChevronUp className="w-3.5 h-3.5" />
-            Less details
-          </>
-        ) : (
-          <>
-            <ChevronDown className="w-3.5 h-3.5" />
-            More details
-          </>
-        )}
-      </button>
+      {/* Metrics row: throughput + lag + RPC */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Throughput */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] text-text-muted flex items-center gap-1">
+            <Zap className="w-3 h-3" />
+            Speed
+          </span>
+          <span className="text-sm font-semibold font-mono text-text-primary">
+            {formatRate(bps)}
+          </span>
+        </div>
 
-      {/* Expanded details */}
-      {expanded && (
-        <div className="mt-3 space-y-3 animate-in fade-in duration-200">
-          <div className="grid grid-cols-2 gap-3">
-            <MetricValue
-              label="Transactions"
-              value={formatNumber(chain.transactionsIndexed)}
-              icon={<Hash className="w-3 h-3" />}
-            />
-            <MetricValue
-              label="RPC Providers"
-              value={`${healthyProviders}/${totalProviders}`}
-              icon={<Shield className="w-3 h-3" />}
-            />
+        {/* Lag to chain tip */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] text-text-muted flex items-center gap-1">
+            <Signal className="w-3 h-3" />
+            Lag
+          </span>
+          <span className={`text-sm font-semibold font-mono ${lagColorClass}`}>
+            {formatNumber(lagBlocks)} blocks
+          </span>
+          <span className={`text-[10px] ${lagColorClass}`}>
+            ~{formatDuration(lagMs)}
+          </span>
+        </div>
+
+        {/* RPC health */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] text-text-muted">RPC</span>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${rpcDotClass}`} />
+            <span className="text-xs text-text-secondary">{rpcLabel}</span>
           </div>
-
-          {/* RPC provider details from WebSocket */}
-          {rpcHealth && rpcHealth.providerStates.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[11px] text-text-muted font-medium uppercase tracking-wider">
-                RPC Providers
-              </span>
-              {rpcHealth.providerStates.map((p) => (
-                <div
-                  key={p.urlHash}
-                  className="flex items-center justify-between text-xs bg-bg-primary/50 rounded-lg px-3 py-1.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        p.state === "CLOSED"
-                          ? "bg-accent-green"
-                          : p.state === "HALF_OPEN"
-                            ? "bg-accent-amber"
-                            : "bg-accent-red"
-                      }`}
-                    />
-                    <span className="font-mono text-text-muted">
-                      ...{p.urlHash.slice(-8)}
-                    </span>
-                  </div>
-                  <span className="text-text-muted capitalize">
-                    {p.state.toLowerCase().replace("_", " ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!rpcObj && (
-            <div className="text-xs text-text-muted">
-              RPC: {String(chain.rpcHealth)}
-            </div>
-          )}
-
-          {progress && (
-            <div className="flex items-center gap-1.5 text-xs text-text-muted">
-              <Clock className="w-3 h-3" />
-              Last update: {new Date(progress.timestamp).toLocaleTimeString()}
-            </div>
-          )}
         </div>
-      )}
+      </div>
     </Card>
   );
 }
