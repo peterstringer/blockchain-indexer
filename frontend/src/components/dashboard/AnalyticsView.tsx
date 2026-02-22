@@ -4,7 +4,9 @@ import { DateRangePicker } from "@/components/common/DateRangePicker";
 import { GasMarketChart } from "@/components/charts/historical/GasMarketChart";
 import { BlockSpaceDemandChart } from "@/components/charts/historical/BlockSpaceDemandChart";
 import { TxTypeEvolutionChart } from "@/components/charts/historical/TxTypeEvolutionChart";
-import { useDataAvailability, useGasMarket, useDailyBlockFullness, useDailyTransactionTypes } from "@/hooks/useHistoricalAnalytics";
+import { FailureAnalysisChart } from "@/components/charts/historical/FailureAnalysisChart";
+import { TxDensityHeatmap } from "@/components/charts/historical/TxDensityHeatmap";
+import { useDataAvailability, useGasMarket, useDailyBlockFullness, useDailyTransactionTypes, useDailyFailureRate, useTxDensityHeatmap } from "@/hooks/useHistoricalAnalytics";
 import type { IndexerStatus } from "@/types";
 
 type Preset = "7d" | "30d" | "90d" | "all";
@@ -60,6 +62,8 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
   const { data: gasMarket } = useGasMarket(from, to, chain);
   const { data: dailyFullness } = useDailyBlockFullness(from, to, chain);
   const { data: dailyTxTypes } = useDailyTransactionTypes(from, to, chain);
+  const { data: dailyFailure } = useDailyFailureRate(from, to, chain);
+  const { data: txDensity } = useTxDensityHeatmap(from, to, chain);
 
   return (
     <div className="flex flex-col min-h-0">
@@ -131,15 +135,18 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<AlertTriangle className="w-4 h-4" />}
             title="Failure Analysis"
-            placeholder="Failed transaction rates over time, failure counts by chain, and correlation between gas prices and failure frequency."
-          />
+            subtitle="Overlay of failed transaction rate and gas price to identify correlation during congestion periods."
+          >
+            <FailureAnalysisChart data={dailyFailure ?? []} />
+          </AnalyticsPanel>
 
           {/* 5. Transaction Density Heatmap */}
           <AnalyticsPanel
             icon={<Grid3x3 className="w-4 h-4" />}
             title="Transaction Density Heatmap"
-            placeholder="Hour-of-day vs day-of-week heatmap showing when each chain processes the most transactions — peak usage patterns."
-          />
+          >
+            <TxDensityHeatmap data={txDensity ?? []} />
+          </AnalyticsPanel>
         </div>
       )}
     </div>
@@ -149,19 +156,26 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
 function AnalyticsPanel({
   icon,
   title,
+  subtitle,
   placeholder,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
+  subtitle?: string;
   placeholder?: string;
   children?: React.ReactNode;
 }) {
   return (
     <div className="w-full rounded-xl bg-bg-card border border-border p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-text-muted">{icon}</span>
-        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      <div className="mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-text-muted">{icon}</span>
+          <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+        </div>
+        {subtitle && (
+          <p className="text-[11px] text-text-muted mt-1 ml-6">{subtitle}</p>
+        )}
       </div>
       {children ?? (
         <div>

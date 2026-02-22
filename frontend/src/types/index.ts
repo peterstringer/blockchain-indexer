@@ -175,6 +175,25 @@ export interface DailyTransactionTypes {
   totalTxs: number;
 }
 
+/** Response from GET /api/analytics/historical/failure-rate */
+export interface DailyFailureRate {
+  chain: string;
+  date: string;
+  totalTransactions: number;
+  failedTransactions: number;
+  failureRatePercent: number | null;
+  avgGasPriceGwei: number | null;
+}
+
+/** Response from GET /api/analytics/historical/tx-density-heatmap */
+export interface TxDensityCell {
+  chain: string;
+  dayOfWeek: number;
+  hour: number;
+  avgTransactionCount: number | null;
+  totalBlocks: number;
+}
+
 /** Response from GET /api/analytics/historical/data-availability */
 export interface DataAvailability {
   chain: string;
