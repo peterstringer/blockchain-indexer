@@ -1,27 +1,9 @@
 import { useState, useCallback } from "react";
-import { Activity, Clock } from "lucide-react";
-import { MultiChainThroughputChart } from "@/components/charts/ThroughputChart";
-import { GasPriceChart } from "@/components/charts/GasPriceChart";
-import { TransactionVolumeChart } from "@/components/charts/TransactionVolumeChart";
-import { GasChart } from "@/components/charts/GasChart";
-import { DailyGasPriceChart } from "@/components/charts/historical/DailyGasPriceChart";
-import { HourlyGasPatternChart } from "@/components/charts/historical/HourlyGasPatternChart";
-import { BlockFullnessChart } from "@/components/charts/historical/BlockFullnessChart";
-import { CrossChainComparisonChart } from "@/components/charts/historical/CrossChainComparisonChart";
-import { TransactionTypeChart } from "@/components/charts/historical/TransactionTypeChart";
+import { Clock, Flame, Box, GitBranch, AlertTriangle, Grid3x3 } from "lucide-react";
 import { DateRangePicker } from "@/components/common/DateRangePicker";
-import { useChainUpdates, useProgressHistory } from "@/hooks/useWebSocket";
-import {
-  useDataAvailability,
-  useDailyGasPrices,
-  useHourlyGasPatterns,
-  useBlockFullness,
-  useCrossChainComparison,
-  useTransactionTypeAnalysis,
-} from "@/hooks/useHistoricalAnalytics";
-import type { IndexerStatus, BlockIndexedMessage, IndexerProgressMessage } from "@/types";
+import { useDataAvailability } from "@/hooks/useHistoricalAnalytics";
+import type { IndexerStatus } from "@/types";
 
-type SubTab = "realtime" | "historical";
 type Preset = "7d" | "30d" | "90d" | "all";
 
 function toDateStr(d: Date): string {
@@ -45,98 +27,8 @@ interface AnalyticsViewProps {
 
 export function AnalyticsView({ status }: AnalyticsViewProps) {
   const chainKeys = Object.keys(status.chains);
-  const [subTab, setSubTab] = useState<SubTab>("historical");
-
-  // Collect real-time data from all chains (hooks must be called unconditionally)
-  const blocksByChain: Record<string, BlockIndexedMessage[]> = {};
-  const historyByChain: Record<string, IndexerProgressMessage[]> = {};
-
-  for (const key of chainKeys) {
-    const { recentBlocks } = useChainUpdates(key);
-    blocksByChain[key] = recentBlocks;
-    historyByChain[key] = useProgressHistory(key);
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Sub-tab navigation */}
-      <div className="flex items-center gap-1 rounded-lg border border-border p-1 w-fit">
-        <button
-          onClick={() => setSubTab("realtime")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            subTab === "realtime"
-              ? "bg-accent-purple/20 text-accent-purple"
-              : "text-text-muted hover:text-text-secondary"
-          }`}
-        >
-          <Activity size={14} />
-          Real-Time
-        </button>
-        <button
-          onClick={() => setSubTab("historical")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            subTab === "historical"
-              ? "bg-accent-purple/20 text-accent-purple"
-              : "text-text-muted hover:text-text-secondary"
-          }`}
-        >
-          <Clock size={14} />
-          Historical
-        </button>
-      </div>
-
-      {subTab === "realtime" ? (
-        <RealTimeCharts
-          chainKeys={chainKeys}
-          blocksByChain={blocksByChain}
-          historyByChain={historyByChain}
-        />
-      ) : (
-        <HistoricalCharts chainKeys={chainKeys} />
-      )}
-    </div>
-  );
-}
-
-// ---- Real-Time sub-tab (existing charts) ----
-
-function RealTimeCharts({
-  chainKeys,
-  blocksByChain,
-  historyByChain,
-}: {
-  chainKeys: string[];
-  blocksByChain: Record<string, BlockIndexedMessage[]>;
-  historyByChain: Record<string, IndexerProgressMessage[]>;
-}) {
-  return (
-    <div className="space-y-6">
-      <MultiChainThroughputChart
-        historyByChain={historyByChain}
-        chainKeys={chainKeys}
-      />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <GasPriceChart blocksByChain={blocksByChain} chainKeys={chainKeys} />
-        <TransactionVolumeChart
-          blocksByChain={blocksByChain}
-          chainKeys={chainKeys}
-        />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {chainKeys.map((key) => (
-          <GasChart key={key} chain={key} blocks={blocksByChain[key] ?? []} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---- Historical sub-tab (new analytics) ----
-
-function HistoricalCharts({ chainKeys }: { chainKeys: string[] }) {
   const { data: availability } = useDataAvailability();
 
-  // Determine the earliest available date across chains
   const earliestDate = availability?.reduce<string | undefined>(
     (min, d) => (!min || d.earliestDate < min ? d.earliestDate : min),
     undefined
@@ -159,49 +51,37 @@ function HistoricalCharts({ chainKeys }: { chainKeys: string[] }) {
     [earliestDate]
   );
 
-  // Fetch all analytics data
-  const { data: dailyGas } = useDailyGasPrices(from, to, chain);
-  const { data: hourlyGas } = useHourlyGasPatterns(from, to, chain);
-  const { data: fullness } = useBlockFullness(from, to);
-  const { data: crossChain } = useCrossChainComparison(from, to);
-  const { data: txTypes } = useTransactionTypeAnalysis(from, to, chain);
-
-  // Determine which chains have data in the results
-  const activeChains = chain
-    ? [chain]
-    : dailyGas
-      ? [...new Set(dailyGas.map((d) => d.chain))]
-      : chainKeys;
-
   const hasData = availability && availability.length > 0;
 
   return (
-    <div className="space-y-4">
-      {/* Date range picker */}
-      <div className="bg-bg-secondary/50 rounded-lg p-3 border border-border">
-        <DateRangePicker
-          from={from}
-          to={to}
-          onFromChange={setFrom}
-          onToChange={setTo}
-          chain={chain}
-          onChainChange={setChain}
-          chainKeys={chainKeys}
-          activePreset={preset}
-          onPresetChange={handlePresetChange}
-        />
-        {/* Data availability summary */}
-        {availability && availability.length > 0 && (
-          <div className="flex flex-wrap gap-3 mt-2">
-            {availability.map((a) => (
-              <span key={a.chain} className="text-[10px] text-text-muted">
-                {a.chain}: {a.blockCount.toLocaleString()} blocks ({a.earliestDate} → {a.latestDate})
-              </span>
-            ))}
-          </div>
-        )}
+    <div className="flex flex-col min-h-0">
+      {/* Sticky controls bar */}
+      <div className="sticky top-0 z-10 bg-bg-primary/95 backdrop-blur-sm pb-3 -mx-1 px-1">
+        <div className="bg-bg-secondary/50 rounded-lg p-3 border border-border">
+          <DateRangePicker
+            from={from}
+            to={to}
+            onFromChange={setFrom}
+            onToChange={setTo}
+            chain={chain}
+            onChainChange={setChain}
+            chainKeys={chainKeys}
+            activePreset={preset}
+            onPresetChange={handlePresetChange}
+          />
+          {availability && availability.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-2">
+              {availability.map((a) => (
+                <span key={a.chain} className="text-[10px] text-text-muted">
+                  {a.chain}: {a.blockCount.toLocaleString()} blocks ({a.earliestDate} &rarr; {a.latestDate})
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Panel content */}
       {!hasData ? (
         <div className="flex flex-col items-center justify-center py-16 text-text-muted">
           <Clock size={40} className="mb-3 opacity-30" />
@@ -211,32 +91,57 @@ function HistoricalCharts({ chainKeys }: { chainKeys: string[] }) {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Daily gas prices — full width */}
-          <DailyGasPriceChart
-            data={dailyGas ?? []}
-            chainKeys={activeChains}
+        <div className="space-y-4 mt-1">
+          <AnalyticsPanel
+            icon={<Flame className="w-4 h-4" />}
+            title="Gas Market"
+            description="Daily and hourly gas price trends across chains — base fees, average/min/max gas prices, and fee volatility over the selected period."
           />
-
-          {/* Hourly patterns + Block fullness */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <HourlyGasPatternChart
-              data={hourlyGas ?? []}
-              chainKeys={activeChains}
-            />
-            <BlockFullnessChart data={fullness ?? []} />
-          </div>
-
-          {/* Cross-chain + Transaction types */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <CrossChainComparisonChart data={crossChain ?? []} />
-            <TransactionTypeChart
-              data={txTypes ?? []}
-              selectedChain={chain}
-            />
-          </div>
+          <AnalyticsPanel
+            icon={<Box className="w-4 h-4" />}
+            title="Block Space Demand"
+            description="Block fullness (gas utilisation %) and cross-chain comparison of transaction counts and gas consumption."
+          />
+          <AnalyticsPanel
+            icon={<GitBranch className="w-4 h-4" />}
+            title="Transaction Type Evolution"
+            description="Breakdown of Legacy, EIP-1559, and contract creation transactions over time — adoption curves and average gas cost per type."
+          />
+          <AnalyticsPanel
+            icon={<AlertTriangle className="w-4 h-4" />}
+            title="Failure Analysis"
+            description="Failed transaction rates over time, failure counts by chain, and correlation between gas prices and failure frequency."
+          />
+          <AnalyticsPanel
+            icon={<Grid3x3 className="w-4 h-4" />}
+            title="Transaction Density Heatmap"
+            description="Hour-of-day vs day-of-week heatmap showing when each chain processes the most transactions — peak usage patterns."
+          />
         </div>
       )}
+    </div>
+  );
+}
+
+function AnalyticsPanel({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="w-full rounded-xl bg-bg-card border border-border p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-text-muted">{icon}</span>
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      </div>
+      <p className="text-xs text-text-muted leading-relaxed">{description}</p>
+      <div className="mt-4 flex items-center justify-center h-48 rounded-lg border border-dashed border-border">
+        <span className="text-xs text-text-muted">Chart placeholder</span>
+      </div>
     </div>
   );
 }
