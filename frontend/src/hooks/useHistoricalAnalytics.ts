@@ -7,6 +7,8 @@ import {
   fetchCrossChainComparison,
   fetchTransactionTypeAnalysis,
   fetchDailyTransactionTypes,
+  fetchDailyFailureRate,
+  fetchTxDensityHeatmap,
   fetchDataAvailability,
   fetchGasMarket,
 } from "@/services/api";
@@ -77,6 +79,24 @@ export function useDailyTransactionTypes(from: string, to: string, chain?: strin
   return useQuery({
     queryKey: ["historical", "tx-types-daily", from, to, chain],
     queryFn: () => fetchDailyTransactionTypes(from, to, chain),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+  });
+}
+
+export function useDailyFailureRate(from: string, to: string, chain?: string) {
+  return useQuery({
+    queryKey: ["historical", "failure-rate", from, to, chain],
+    queryFn: () => fetchDailyFailureRate(from, to, chain),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+  });
+}
+
+export function useTxDensityHeatmap(from: string, to: string, chain?: string) {
+  return useQuery({
+    queryKey: ["historical", "tx-density-heatmap", from, to, chain],
+    queryFn: () => fetchTxDensityHeatmap(from, to, chain),
     enabled: !!from && !!to,
     staleTime: 60_000,
   });

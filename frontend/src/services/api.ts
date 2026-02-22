@@ -12,6 +12,8 @@ import type {
   CrossChainComparison,
   TransactionTypeAnalysis,
   DailyTransactionTypes,
+  DailyFailureRate,
+  TxDensityCell,
   DataAvailability,
   GasMarketDaily,
 } from "@/types";
@@ -128,6 +130,24 @@ export function fetchDailyTransactionTypes(
   const params = new URLSearchParams({ from, to });
   if (chain) params.set("chain", chain);
   return request(`/analytics/historical/transaction-types/daily?${params}`);
+}
+
+/** GET /api/analytics/historical/failure-rate */
+export function fetchDailyFailureRate(
+  from: string, to: string, chain?: string
+): Promise<DailyFailureRate[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/failure-rate?${params}`);
+}
+
+/** GET /api/analytics/historical/tx-density-heatmap */
+export function fetchTxDensityHeatmap(
+  from: string, to: string, chain?: string
+): Promise<TxDensityCell[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/tx-density-heatmap?${params}`);
 }
 
 /** GET /api/analytics/historical/data-availability */
