@@ -106,6 +106,17 @@ public class BlockAnalytics {
     @Column(name = "avg_gas_contract")
     private Double avgGasContract;
 
+    // ---- V5 columns ----
+
+    @Column(name = "avg_priority_fee_gwei")
+    private Double avgPriorityFeeGwei;
+
+    @Column(name = "actual_block_time_ms")
+    private Integer actualBlockTimeMs;
+
+    @Column(name = "block_day_of_week")
+    private Short blockDayOfWeek;
+
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 }
