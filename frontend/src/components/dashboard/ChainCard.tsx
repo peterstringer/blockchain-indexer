@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Play, Square, Zap, Signal } from "lucide-react";
 import { Card } from "@/components/common/Card";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -23,15 +24,30 @@ interface ChainCardProps {
 }
 
 export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
-  const { progress, rpcHealth } = useChainUpdates(chainKey);
+  const { progress, recentBlocks, rpcHealth } = useChainUpdates(chainKey);
   const startMutation = useStartIndexing();
   const stopMutation = useStopIndexing();
+
+  // Pulse animation: fire when a new block arrives
+  const [pulsing, setPulsing] = useState(false);
+  const blockCountRef = useRef(recentBlocks.length);
+
+  useEffect(() => {
+    if (recentBlocks.length > blockCountRef.current) {
+      setPulsing(true);
+      const id = setTimeout(() => setPulsing(false), 400);
+      blockCountRef.current = recentBlocks.length;
+      return () => clearTimeout(id);
+    }
+    blockCountRef.current = recentBlocks.length;
+  }, [recentBlocks.length]);
 
   const currentBlock = progress?.currentBlock ?? chain.lastBlock ?? 0;
   const latestBlock = progress?.latestBlock ?? chain.targetBlock ?? 0;
   const bps = progress?.blocksPerSecond ?? chain.blocksPerSecond ?? 0;
   const percent = progressPercent(currentBlock, latestBlock);
   const color = getChainColor(chainKey);
+  const stopped = !isRunning;
 
   // Lag calculation
   const lagBlocks = Math.max(0, latestBlock - currentBlock);
@@ -67,7 +83,7 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
   const chainStatus = isRunning && bps > 0 ? "running" : isRunning ? "info" : "stopped";
 
   return (
-    <Card className="flex flex-col" hover>
+    <Card className={`flex flex-col${stopped ? " opacity-60 grayscale-[30%]" : ""}`} hover={!stopped}>
       {/* Header: chain icon + name + status + controls */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -136,9 +152,13 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
             <Zap className="w-3 h-3" />
             Speed
           </span>
-          <span className="text-sm font-semibold font-mono text-text-primary">
-            {formatRate(bps)}
-          </span>
+          {stopped ? (
+            <span className="text-sm font-semibold font-mono text-text-muted">Stopped</span>
+          ) : (
+            <span className={`text-sm font-semibold font-mono text-text-primary inline-block${pulsing ? " metric-pulse" : ""}`}>
+              {formatRate(bps)}
+            </span>
+          )}
         </div>
 
         {/* Lag to chain tip */}
@@ -147,12 +167,18 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
             <Signal className="w-3 h-3" />
             Lag
           </span>
-          <span className={`text-sm font-semibold font-mono ${lagColorClass}`}>
-            {formatNumber(lagBlocks)} blocks
-          </span>
-          <span className={`text-[10px] ${lagColorClass}`}>
-            ~{formatDuration(lagMs)}
-          </span>
+          {stopped ? (
+            <span className="text-sm font-semibold font-mono text-text-muted">—</span>
+          ) : (
+            <>
+              <span className={`text-sm font-semibold font-mono ${lagColorClass}`}>
+                {formatNumber(lagBlocks)} blocks
+              </span>
+              <span className={`text-[10px] ${lagColorClass}`}>
+                ~{formatDuration(lagMs)}
+              </span>
+            </>
+          )}
         </div>
 
         {/* RPC health */}

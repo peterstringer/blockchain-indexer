@@ -1,4 +1,4 @@
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, Tooltip, ResponsiveContainer } from "recharts";
 import { getChainColor } from "@/utils/format";
 import type { IndexerProgressMessage } from "@/types";
 
@@ -7,9 +7,17 @@ interface ThroughputSparklineProps {
   history: IndexerProgressMessage[];
 }
 
+interface SparkPoint {
+  bps: number;
+  time: string;
+}
+
 export function ThroughputSparkline({ chain, history }: ThroughputSparklineProps) {
   const color = getChainColor(chain);
-  const data = history.map((msg, i) => ({ i, bps: msg.blocksPerSecond }));
+  const data: SparkPoint[] = history.map((msg) => ({
+    bps: msg.blocksPerSecond,
+    time: msg.timestamp,
+  }));
 
   return (
     <div className="h-12 w-full rounded-lg overflow-hidden bg-bg-card border border-border">
@@ -26,6 +34,10 @@ export function ThroughputSparkline({ chain, history }: ThroughputSparklineProps
                 <stop offset="100%" stopColor={color} stopOpacity={0.05} />
               </linearGradient>
             </defs>
+            <Tooltip
+              content={<SparkTooltip />}
+              cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: "3 3" }}
+            />
             <Area
               type="monotone"
               dataKey="bps"
@@ -37,6 +49,18 @@ export function ThroughputSparkline({ chain, history }: ThroughputSparklineProps
           </AreaChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function SparkTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: SparkPoint }> }) {
+  if (!active || !payload?.[0]) return null;
+  const { bps, time } = payload[0].payload;
+  const formatted = new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="rounded-md bg-bg-secondary border border-border px-2 py-1 text-[10px] leading-tight shadow-lg">
+      <div className="font-mono text-text-primary">{bps.toFixed(1)} blocks/s</div>
+      <div className="text-text-muted">{formatted}</div>
     </div>
   );
 }
