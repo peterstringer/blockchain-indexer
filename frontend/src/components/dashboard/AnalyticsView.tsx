@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import { Clock, Flame, Box, GitBranch, AlertTriangle, Grid3x3 } from "lucide-react";
 import { DateRangePicker } from "@/components/common/DateRangePicker";
-import { useDataAvailability } from "@/hooks/useHistoricalAnalytics";
+import { GasMarketChart } from "@/components/charts/historical/GasMarketChart";
+import { useDataAvailability, useGasMarket } from "@/hooks/useHistoricalAnalytics";
 import type { IndexerStatus } from "@/types";
 
 type Preset = "7d" | "30d" | "90d" | "all";
@@ -53,6 +54,9 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
 
   const hasData = availability && availability.length > 0;
 
+  // Fetch panel data
+  const { data: gasMarket } = useGasMarket(from, to, chain);
+
   return (
     <div className="flex flex-col min-h-0">
       {/* Sticky controls bar */}
@@ -92,30 +96,40 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
         </div>
       ) : (
         <div className="space-y-4 mt-1">
+          {/* 1. Gas Market */}
           <AnalyticsPanel
             icon={<Flame className="w-4 h-4" />}
             title="Gas Market"
-            description="Daily and hourly gas price trends across chains — base fees, average/min/max gas prices, and fee volatility over the selected period."
-          />
+          >
+            <GasMarketChart data={gasMarket ?? []} selectedChain={chain} />
+          </AnalyticsPanel>
+
+          {/* 2. Block Space Demand */}
           <AnalyticsPanel
             icon={<Box className="w-4 h-4" />}
             title="Block Space Demand"
-            description="Block fullness (gas utilisation %) and cross-chain comparison of transaction counts and gas consumption."
+            placeholder="Block fullness (gas utilisation %) and cross-chain comparison of transaction counts and gas consumption."
           />
+
+          {/* 3. Transaction Type Evolution */}
           <AnalyticsPanel
             icon={<GitBranch className="w-4 h-4" />}
             title="Transaction Type Evolution"
-            description="Breakdown of Legacy, EIP-1559, and contract creation transactions over time — adoption curves and average gas cost per type."
+            placeholder="Breakdown of Legacy, EIP-1559, and contract creation transactions over time — adoption curves and average gas cost per type."
           />
+
+          {/* 4. Failure Analysis */}
           <AnalyticsPanel
             icon={<AlertTriangle className="w-4 h-4" />}
             title="Failure Analysis"
-            description="Failed transaction rates over time, failure counts by chain, and correlation between gas prices and failure frequency."
+            placeholder="Failed transaction rates over time, failure counts by chain, and correlation between gas prices and failure frequency."
           />
+
+          {/* 5. Transaction Density Heatmap */}
           <AnalyticsPanel
             icon={<Grid3x3 className="w-4 h-4" />}
             title="Transaction Density Heatmap"
-            description="Hour-of-day vs day-of-week heatmap showing when each chain processes the most transactions — peak usage patterns."
+            placeholder="Hour-of-day vs day-of-week heatmap showing when each chain processes the most transactions — peak usage patterns."
           />
         </div>
       )}
@@ -126,22 +140,28 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
 function AnalyticsPanel({
   icon,
   title,
-  description,
+  placeholder,
+  children,
 }: {
   icon: React.ReactNode;
   title: string;
-  description: string;
+  placeholder?: string;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="w-full rounded-xl bg-bg-card border border-border p-5">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-3">
         <span className="text-text-muted">{icon}</span>
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
       </div>
-      <p className="text-xs text-text-muted leading-relaxed">{description}</p>
-      <div className="mt-4 flex items-center justify-center h-48 rounded-lg border border-dashed border-border">
-        <span className="text-xs text-text-muted">Chart placeholder</span>
-      </div>
+      {children ?? (
+        <div>
+          <p className="text-xs text-text-muted leading-relaxed mb-4">{placeholder}</p>
+          <div className="flex items-center justify-center h-48 rounded-lg border border-dashed border-border">
+            <span className="text-xs text-text-muted">Chart placeholder</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

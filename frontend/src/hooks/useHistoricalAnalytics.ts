@@ -6,6 +6,7 @@ import {
   fetchCrossChainComparison,
   fetchTransactionTypeAnalysis,
   fetchDataAvailability,
+  fetchGasMarket,
 } from "@/services/api";
 
 export function useDataAvailability() {
@@ -56,6 +57,15 @@ export function useTransactionTypeAnalysis(from: string, to: string, chain?: str
   return useQuery({
     queryKey: ["historical", "tx-types", from, to, chain],
     queryFn: () => fetchTransactionTypeAnalysis(from, to, chain),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+  });
+}
+
+export function useGasMarket(from: string, to: string, chain?: string) {
+  return useQuery({
+    queryKey: ["historical", "gas-market", from, to, chain],
+    queryFn: () => fetchGasMarket(from, to, chain),
     enabled: !!from && !!to,
     staleTime: 60_000,
   });
