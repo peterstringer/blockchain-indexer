@@ -165,6 +165,16 @@ export interface TransactionTypeAnalysis {
   avgGasContract: number | null;
 }
 
+/** Response from GET /api/analytics/historical/transaction-types/daily */
+export interface DailyTransactionTypes {
+  chain: string;
+  date: string;
+  totalLegacy: number;
+  totalEip1559: number;
+  totalContract: number;
+  totalTxs: number;
+}
+
 /** Response from GET /api/analytics/historical/data-availability */
 export interface DataAvailability {
   chain: string;
