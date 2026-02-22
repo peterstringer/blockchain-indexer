@@ -9,7 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { DailyTransactionTypes } from "@/types";
-import { getChainColor, getChainDisplayName } from "@/utils/format";
+import { getChainColor, getChainDisplayName, formatDateShort } from "@/utils/format";
 
 interface TxTypeEvolutionChartProps {
   data: DailyTransactionTypes[];
@@ -91,6 +91,7 @@ export function TxTypeEvolutionChart({ data }: TxTypeEvolutionChartProps) {
                   />
                   <XAxis
                     dataKey="date"
+                    tickFormatter={formatDateShort}
                     tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                     axisLine={false}
                     tickLine={false}
@@ -196,7 +197,7 @@ function TxTypeTooltip({
 
   return (
     <div className="rounded-lg bg-bg-secondary border border-border px-3 py-2 shadow-lg text-xs">
-      <div className="text-text-muted mb-1.5 font-medium">{label}</div>
+      <div className="text-text-muted mb-1.5 font-medium">{label ? formatDateShort(label) : ""}</div>
       {items.map((item) => (
         <div key={item.key} className="flex items-center justify-between gap-4 mb-0.5 last:mb-0">
           <div className="flex items-center gap-1.5">

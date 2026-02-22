@@ -11,7 +11,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { BlockFullnessDaily, GasMarketDaily } from "@/types";
-import { getChainColor, getChainDisplayName } from "@/utils/format";
+import { getChainColor, getChainDisplayName, formatDateShort } from "@/utils/format";
 
 interface BlockSpaceDemandChartProps {
   fullnessData: BlockFullnessDaily[];
@@ -89,6 +89,7 @@ export function BlockSpaceDemandChart({
             />
             <XAxis
               dataKey="date"
+              tickFormatter={formatDateShort}
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
@@ -100,14 +101,8 @@ export function BlockSpaceDemandChart({
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
-              width={45}
+              width={40}
               tickFormatter={(v: number) => `${v}%`}
-              label={{
-                value: "Fullness %",
-                position: "insideLeft",
-                offset: 10,
-                style: { fontSize: 10, fill: "var(--color-text-muted)" },
-              }}
             />
             <YAxis
               yAxisId="gwei"
@@ -115,13 +110,7 @@ export function BlockSpaceDemandChart({
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
-              width={50}
-              label={{
-                value: "Gwei",
-                position: "insideRight",
-                offset: 10,
-                style: { fontSize: 10, fill: "var(--color-text-muted)" },
-              }}
+              width={40}
             />
             <Tooltip content={<DemandTooltip chains={chains} />} />
 
@@ -221,7 +210,7 @@ function DemandTooltip({
 
   return (
     <div className="rounded-lg bg-bg-secondary border border-border px-3 py-2 shadow-lg text-xs">
-      <div className="text-text-muted mb-1.5 font-medium">{label}</div>
+      <div className="text-text-muted mb-1.5 font-medium">{label ? formatDateShort(label) : ""}</div>
       {chains.map((chain) => {
         const fullness = row[`${chain}_fullness`] as number | null;
         const baseFee = row[`${chain}_baseFee`] as number | null;

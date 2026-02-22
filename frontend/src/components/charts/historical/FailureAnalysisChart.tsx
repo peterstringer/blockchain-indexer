@@ -9,7 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { DailyFailureRate } from "@/types";
-import { getChainColor, getChainDisplayName } from "@/utils/format";
+import { getChainColor, getChainDisplayName, formatDateShort } from "@/utils/format";
 
 interface FailureAnalysisChartProps {
   data: DailyFailureRate[];
@@ -60,6 +60,7 @@ export function FailureAnalysisChart({ data }: FailureAnalysisChartProps) {
             />
             <XAxis
               dataKey="date"
+              tickFormatter={formatDateShort}
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
@@ -70,14 +71,8 @@ export function FailureAnalysisChart({ data }: FailureAnalysisChartProps) {
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
-              width={45}
+              width={40}
               tickFormatter={(v: number) => `${v.toFixed(1)}%`}
-              label={{
-                value: "Fail %",
-                position: "insideLeft",
-                offset: 10,
-                style: { fontSize: 10, fill: "var(--color-text-muted)" },
-              }}
             />
             <YAxis
               yAxisId="gasPrice"
@@ -85,13 +80,7 @@ export function FailureAnalysisChart({ data }: FailureAnalysisChartProps) {
               tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
               axisLine={false}
               tickLine={false}
-              width={50}
-              label={{
-                value: "Gwei",
-                position: "insideRight",
-                offset: 10,
-                style: { fontSize: 10, fill: "var(--color-text-muted)" },
-              }}
+              width={40}
             />
             <Tooltip content={<FailureTooltip chains={chains} />} />
 
@@ -175,7 +164,7 @@ function FailureTooltip({
 
   return (
     <div className="rounded-lg bg-bg-secondary border border-border px-3 py-2 shadow-lg text-xs">
-      <div className="text-text-muted mb-1.5 font-medium">{label}</div>
+      <div className="text-text-muted mb-1.5 font-medium">{label ? formatDateShort(label) : ""}</div>
       {chains.map((chain) => {
         const failRate = row[`${chain}_failRate`] as number | null;
         const gasPrice = row[`${chain}_gasPrice`] as number | null;
