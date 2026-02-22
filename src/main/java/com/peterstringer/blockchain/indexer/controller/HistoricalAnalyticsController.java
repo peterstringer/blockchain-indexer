@@ -194,6 +194,31 @@ public class HistoricalAnalyticsController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Daily transaction type breakdown",
+               description = "Daily counts of legacy, EIP-1559, and contract creation transactions")
+    @GetMapping("/transaction-types/daily")
+    public ResponseEntity<List<Map<String, Object>>> getDailyTransactionTypes(
+            @Parameter(description = "Chain filter (null = all chains)")
+            @RequestParam(required = false) String chain,
+            @Parameter(description = "Start date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "End date (inclusive, ISO format)")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+        List<Object[]> rows = repository.findDailyTransactionTypes(chain, from, to);
+        List<Map<String, Object>> result = rows.stream().map(row -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("chain", row[0]);
+            map.put("date", row[1].toString());
+            map.put("totalLegacy", ((Number) row[2]).longValue());
+            map.put("totalEip1559", ((Number) row[3]).longValue());
+            map.put("totalContract", ((Number) row[4]).longValue());
+            map.put("totalTxs", ((Number) row[5]).longValue());
+            return map;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "Gas market daily",
                description = "Daily base fee, effective gas price, and priority fee trends")
     @GetMapping("/gas-market")

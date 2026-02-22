@@ -170,6 +170,28 @@ public interface BlockAnalyticsRepository extends JpaRepository<BlockAnalytics, 
                                                @Param("toDate") LocalDate toDate);
 
     /**
+     * Daily transaction type breakdown: counts per type per chain per day.
+     *
+     * @return rows of [chain, block_date, total_legacy, total_eip1559, total_contract, total_txs]
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT chain,
+                   block_date,
+                   SUM(tx_count_legacy)     AS total_legacy,
+                   SUM(tx_count_eip1559)    AS total_eip1559,
+                   SUM(tx_count_contract)   AS total_contract,
+                   SUM(transaction_count)   AS total_txs
+              FROM block_analytics
+             WHERE (:chain IS NULL OR chain = :chain)
+               AND block_date BETWEEN :fromDate AND :toDate
+             GROUP BY chain, block_date
+             ORDER BY chain, block_date
+            """)
+    List<Object[]> findDailyTransactionTypes(@Param("chain") String chain,
+                                              @Param("fromDate") LocalDate fromDate,
+                                              @Param("toDate") LocalDate toDate);
+
+    /**
      * Gas market daily: avg base fee, effective gas price, priority fee, and min/max base fee.
      *
      * @return rows of [chain, block_date, avg_base_fee, avg_effective_gas_price, avg_priority_fee,

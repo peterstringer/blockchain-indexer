@@ -6,6 +6,7 @@ import {
   fetchDailyBlockFullness,
   fetchCrossChainComparison,
   fetchTransactionTypeAnalysis,
+  fetchDailyTransactionTypes,
   fetchDataAvailability,
   fetchGasMarket,
 } from "@/services/api";
@@ -67,6 +68,15 @@ export function useTransactionTypeAnalysis(from: string, to: string, chain?: str
   return useQuery({
     queryKey: ["historical", "tx-types", from, to, chain],
     queryFn: () => fetchTransactionTypeAnalysis(from, to, chain),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+  });
+}
+
+export function useDailyTransactionTypes(from: string, to: string, chain?: string) {
+  return useQuery({
+    queryKey: ["historical", "tx-types-daily", from, to, chain],
+    queryFn: () => fetchDailyTransactionTypes(from, to, chain),
     enabled: !!from && !!to,
     staleTime: 60_000,
   });

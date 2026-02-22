@@ -3,7 +3,8 @@ import { Clock, Flame, Box, GitBranch, AlertTriangle, Grid3x3 } from "lucide-rea
 import { DateRangePicker } from "@/components/common/DateRangePicker";
 import { GasMarketChart } from "@/components/charts/historical/GasMarketChart";
 import { BlockSpaceDemandChart } from "@/components/charts/historical/BlockSpaceDemandChart";
-import { useDataAvailability, useGasMarket, useDailyBlockFullness } from "@/hooks/useHistoricalAnalytics";
+import { TxTypeEvolutionChart } from "@/components/charts/historical/TxTypeEvolutionChart";
+import { useDataAvailability, useGasMarket, useDailyBlockFullness, useDailyTransactionTypes } from "@/hooks/useHistoricalAnalytics";
 import type { IndexerStatus } from "@/types";
 
 type Preset = "7d" | "30d" | "90d" | "all";
@@ -58,6 +59,7 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
   // Fetch panel data
   const { data: gasMarket } = useGasMarket(from, to, chain);
   const { data: dailyFullness } = useDailyBlockFullness(from, to, chain);
+  const { data: dailyTxTypes } = useDailyTransactionTypes(from, to, chain);
 
   return (
     <div className="flex flex-col min-h-0">
@@ -121,8 +123,9 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
           <AnalyticsPanel
             icon={<GitBranch className="w-4 h-4" />}
             title="Transaction Type Evolution"
-            placeholder="Breakdown of Legacy, EIP-1559, and contract creation transactions over time — adoption curves and average gas cost per type."
-          />
+          >
+            <TxTypeEvolutionChart data={dailyTxTypes ?? []} />
+          </AnalyticsPanel>
 
           {/* 4. Failure Analysis */}
           <AnalyticsPanel

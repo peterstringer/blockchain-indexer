@@ -11,6 +11,7 @@ import type {
   BlockFullnessDaily,
   CrossChainComparison,
   TransactionTypeAnalysis,
+  DailyTransactionTypes,
   DataAvailability,
   GasMarketDaily,
 } from "@/types";
@@ -118,6 +119,15 @@ export function fetchTransactionTypeAnalysis(
   const params = new URLSearchParams({ from, to });
   if (chain) params.set("chain", chain);
   return request(`/analytics/historical/transaction-types?${params}`);
+}
+
+/** GET /api/analytics/historical/transaction-types/daily */
+export function fetchDailyTransactionTypes(
+  from: string, to: string, chain?: string
+): Promise<DailyTransactionTypes[]> {
+  const params = new URLSearchParams({ from, to });
+  if (chain) params.set("chain", chain);
+  return request(`/analytics/historical/transaction-types/daily?${params}`);
 }
 
 /** GET /api/analytics/historical/data-availability */
