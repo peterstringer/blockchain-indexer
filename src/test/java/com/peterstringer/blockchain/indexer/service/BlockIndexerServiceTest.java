@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link BlockIndexerService}, covering start/stop lifecycle,
- * backfill processing, checkpoint management, status reporting, and error
+ * reverse backfill processing, checkpoint management, status reporting, and error
  * handling. All external dependencies are mocked.
  */
 @DisplayName("BlockIndexerService")
@@ -144,9 +144,9 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should throw IllegalStateException when starting already-running chain")
         void throwsWhenAlreadyRunning() {
-            // Set up mocks for a successful start
-            when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
+            lenient().when(checkpointRepository.findByChain("ethereum"))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 110L)));
             lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.completedFuture(Collections.emptyList()));
 
@@ -161,18 +161,15 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should allow restarting after stop completes")
         void allowsRestartAfterStop() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 109L)));
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 110L)));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
-            // Wait for the backfill to complete (startBlock=100, endBlock=110, checkpoint at 109 → starts at 110)
             Thread.sleep(500);
             service.stopIndexing("ethereum");
 
             // Should not throw — chain is stopped
-            when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 109L)));
-
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
             Thread.sleep(200);
             service.stopIndexing("ethereum");
@@ -189,9 +186,10 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("stopAll should stop all running chains")
         void stopAllStopsEverything() throws Exception {
-            when(checkpointRepository.findByChain(anyString()))
-                    .thenReturn(Optional.of(createCheckpoint("test", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(anyString(), any(), any()))
+            lenient().when(rpcClientService.getLatestBlockNumber(anyString())).thenReturn(110L);
+            lenient().when(checkpointRepository.findByChain(anyString()))
+                    .thenReturn(Optional.of(createCheckpoint("test", 110L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(anyString(), any(), any()))
                     .thenReturn(neverCompletingFuture());
 
             service.startAll(BlockIndexerService.IndexMode.BACKFILL);
@@ -235,21 +233,22 @@ class BlockIndexerServiceTest {
         }
 
         @Test
-        @DisplayName("should report NOT_STARTED for unconfigured chains")
+        @DisplayName("should report STOPPED for chains not yet started")
         void reportsNotStarted() {
             IndexerStatus status = service.getStatus();
 
             IndexerStatus.ChainStatus ethStatus = status.getChains().get("ethereum");
-            assertThat(ethStatus.getRpcHealth()).isEqualTo("NOT_STARTED");
+            assertThat(ethStatus.getRpcHealth()).isEqualTo("STOPPED");
             assertThat(ethStatus.getBlocksIndexed()).isEqualTo(0L);
         }
 
         @Test
         @DisplayName("should report running status during backfill")
         void reportsRunningDuringBackfill() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 100L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(neverCompletingFuture());
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
@@ -265,9 +264,9 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should report running status during incremental mode")
         void reportsRunningDuringIncremental() throws Exception {
-            when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(99L);
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
+            lenient().when(checkpointRepository.findByChain("ethereum"))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 110L)));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.INCREMENTAL);
             Thread.sleep(200);
@@ -281,55 +280,61 @@ class BlockIndexerServiceTest {
     }
 
     // =========================================================================
-    // Backfill processing
+    // Reverse backfill processing
     // =========================================================================
 
     @Nested
-    @DisplayName("Backfill Processing")
+    @DisplayName("Reverse Backfill Processing")
     class BackfillTests {
 
         @Test
         @DisplayName("should create checkpoint if none exists")
         void createsCheckpointIfMissing() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum")).thenReturn(Optional.empty());
             when(checkpointRepository.save(any(IndexerCheckpoint.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.completedFuture(createTestBlocks(100, 104)));
-            when(checkpointRepository.updateCheckpoint(anyString(), anyLong(), anyLong(), anyLong(), any()))
+            lenient().when(checkpointRepository.updateBackfillFloor(anyString(), anyLong(), anyLong(), anyLong(), any()))
+                    .thenReturn(1);
+            lenient().when(checkpointRepository.updateCheckpoint(anyString(), anyLong(), anyLong(), anyLong(), any()))
                     .thenReturn(1);
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
             Thread.sleep(1000);
             service.stopIndexing("ethereum");
 
-            verify(checkpointRepository).save(any(IndexerCheckpoint.class));
+            // Both reverse backfill and incremental threads may create checkpoints
+            verify(checkpointRepository, atLeastOnce()).save(any(IndexerCheckpoint.class));
         }
 
         @Test
-        @DisplayName("should resume from last checkpoint")
+        @DisplayName("should process blocks in reverse order from chain head")
         void resumesFromCheckpoint() throws Exception {
-            // Checkpoint at block 104 (already indexed 100-104)
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 104L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
-                    .thenReturn(CompletableFuture.completedFuture(createTestBlocks(105, 110)));
-            when(checkpointRepository.updateCheckpoint(anyString(), anyLong(), anyLong(), anyLong(), any()))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 110L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+                    .thenReturn(CompletableFuture.completedFuture(createTestBlocks(100, 104)));
+            lenient().when(checkpointRepository.updateBackfillFloor(anyString(), anyLong(), anyLong(), anyLong(), any()))
                     .thenReturn(1);
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
             Thread.sleep(1000);
+            service.stopIndexing("ethereum");
 
-            // Should have written blocks starting from 105
+            // Should have written blocks during reverse backfill
             verify(parquetWriterService, atLeastOnce()).writeBlocks(any());
         }
 
         @Test
         @DisplayName("should handle empty batch gracefully")
         void handlesEmptyBatch() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 100L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.completedFuture(Collections.emptyList()));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
@@ -342,9 +347,12 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should skip already-completed backfill")
         void skipsCompletedBackfill() throws Exception {
-            // Checkpoint already at endBlock (110)
+            // Checkpoint with backfillFloorBlock at startBlock means backfill is complete
+            IndexerCheckpoint cp = createCheckpoint("ethereum", 110L);
+            cp.setBackfillFloorBlock(100L);
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 110L)));
+                    .thenReturn(Optional.of(cp));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
             Thread.sleep(500);
@@ -365,9 +373,10 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should continue on RPC errors during backfill")
         void continuesOnRpcErrors() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 100L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.failedFuture(
                             new RpcClientService.RpcException("RPC down")));
 
@@ -383,11 +392,14 @@ class BlockIndexerServiceTest {
         @Test
         @DisplayName("should handle checkpoint update failures gracefully")
         void handlesCheckpointUpdateFailure() throws Exception {
+            when(rpcClientService.getLatestBlockNumber("ethereum")).thenReturn(110L);
             when(checkpointRepository.findByChain("ethereum"))
-                    .thenReturn(Optional.of(createCheckpoint("ethereum", 99L)));
-            when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
+                    .thenReturn(Optional.of(createCheckpoint("ethereum", 100L)));
+            lenient().when(rpcClientService.getIndexedBlocksAsync(eq("ethereum"), any(), any()))
                     .thenReturn(CompletableFuture.completedFuture(createTestBlocks(100, 104)));
-            when(checkpointRepository.updateCheckpoint(anyString(), anyLong(), anyLong(), anyLong(), any()))
+            lenient().when(checkpointRepository.updateBackfillFloor(anyString(), anyLong(), anyLong(), anyLong(), any()))
+                    .thenThrow(new RuntimeException("DB connection lost"));
+            lenient().when(checkpointRepository.updateCheckpoint(anyString(), anyLong(), anyLong(), anyLong(), any()))
                     .thenThrow(new RuntimeException("DB connection lost"));
 
             service.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);

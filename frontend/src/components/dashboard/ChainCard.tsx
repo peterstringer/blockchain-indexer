@@ -63,27 +63,48 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
   const rpcObj = isRpcHealthObject(chain.rpcHealth) ? chain.rpcHealth : null;
   const wsHealthy = rpcHealth?.providersHealthy ?? rpcObj?.healthyProviders ?? 0;
   const wsTotal = rpcHealth?.providersTotal ?? rpcObj?.totalProviders ?? 0;
+  const rpcStateStr = typeof chain.rpcHealth === "string" ? chain.rpcHealth : "";
+  const isChainActive = rpcStateStr.startsWith("RUNNING");
   const rpcDotClass =
-    wsTotal === 0
-      ? "bg-accent-amber"
-      : wsHealthy === wsTotal
+    wsTotal > 0
+      ? wsHealthy === wsTotal
         ? "bg-accent-green"
         : wsHealthy > 0
           ? "bg-accent-amber"
-          : "bg-accent-red";
+          : "bg-accent-red"
+      : isChainActive
+        ? "bg-accent-green"
+        : "bg-text-muted";
   const rpcLabel =
-    wsTotal === 0
-      ? "No providers"
-      : wsHealthy === wsTotal
+    wsTotal > 0
+      ? wsHealthy === wsTotal
         ? `${wsHealthy}/${wsTotal} healthy`
         : wsHealthy > 0
           ? `${wsHealthy}/${wsTotal} degraded`
-          : `${wsHealthy}/${wsTotal} down`;
+          : `${wsHealthy}/${wsTotal} down`
+      : isChainActive
+        ? "Connected"
+        : "Idle";
 
-  const chainStatus = isRunning && bps > 0 ? "running" : isRunning ? "info" : "stopped";
+  // Determine chain mode from rpcHealth string (matches backend ChainState enum names)
+  const isBackfilling = rpcStateStr === "RUNNING_BACKFILL";
+  const isIncremental = rpcStateStr === "RUNNING_INCREMENTAL";
+  const isLive = isIncremental && lagBlocks < 10;
+  const isWaiting = isIncremental && bps === 0 && lagBlocks === 0;
+
+  const chainStatus = isWaiting ? "running" : isLive ? "running" : isRunning && bps > 0 ? "running" : isRunning ? "info" : "stopped";
+  const statusLabel = stopped
+    ? "Idle"
+    : isWaiting
+      ? "Live — Waiting"
+      : isLive
+        ? "Live"
+        : isBackfilling
+          ? "Backfilling"
+          : "Indexing";
 
   return (
-    <Card className={`flex flex-col${stopped ? " opacity-60 grayscale-[30%]" : ""}`} hover={!stopped}>
+    <Card className="flex flex-col" hover={!stopped}>
       {/* Header: chain icon + name + status + controls */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -103,7 +124,7 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <StatusBadge status={chainStatus} size="sm" label={isRunning ? "Indexing" : "Idle"} />
+          <StatusBadge status={chainStatus} size="sm" label={statusLabel} />
           {isRunning ? (
             <button
               onClick={() => stopMutation.mutate({ chain: chainKey })}
@@ -169,6 +190,10 @@ export function ChainCard({ chainKey, chain, isRunning }: ChainCardProps) {
           </span>
           {stopped ? (
             <span className="text-sm font-semibold font-mono text-text-muted">—</span>
+          ) : lagBlocks === 0 ? (
+            <span className="text-sm font-semibold font-mono text-accent-green">
+              Caught up
+            </span>
           ) : (
             <>
               <span className={`text-sm font-semibold font-mono ${lagColorClass}`}>
