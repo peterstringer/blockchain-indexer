@@ -8,7 +8,7 @@ export function Footer() {
           <span>Multi-Chain Block Indexer</span>
           <div className="flex items-center gap-4">
             <a
-              href="https://github.com"
+              href="https://github.com/peterstringer/blockchain-indexer"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-text-secondary transition-colors"

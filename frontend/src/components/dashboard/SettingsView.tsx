@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Info, Database, Server, Clock } from "lucide-react";
+import { Info, Database, Server } from "lucide-react";
 import { Card, CardHeader } from "@/components/common/Card";
 import { MetricValue } from "@/components/common/MetricValue";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -34,25 +34,16 @@ export function SettingsView({ status }: SettingsViewProps) {
           subtitle="Current indexer configuration and status"
           action={<Info className="w-4 h-4 text-text-muted" />}
         />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <MetricValue
             label="Mode"
             value={status.mode}
             icon={<Server className="w-3 h-3" />}
           />
           <MetricValue
-            label="Uptime"
-            value={status.uptime ?? "N/A"}
-            icon={<Clock className="w-3 h-3" />}
-          />
-          <MetricValue
-            label="Started At"
-            value={
-              status.startedAt
-                ? new Date(status.startedAt).toLocaleString()
-                : "Not started"
-            }
-            icon={<Clock className="w-3 h-3" />}
+            label="Status"
+            value={status.running ? "Running" : "Stopped"}
+            icon={<Server className="w-3 h-3" />}
           />
           <MetricValue
             label="Demo Mode"

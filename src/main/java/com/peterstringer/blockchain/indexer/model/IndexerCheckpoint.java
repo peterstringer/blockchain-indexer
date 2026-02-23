@@ -43,6 +43,10 @@ public class IndexerCheckpoint {
     @Column(name = "total_transactions_indexed")
     private Long totalTransactionsIndexed = 0L;
 
+    /** Lowest block indexed during reverse backfill (null = no reverse backfill yet). */
+    @Column(name = "backfill_floor_block")
+    private Long backfillFloorBlock;
+
     @Column(name = "last_updated")
     private OffsetDateTime lastUpdated;
 

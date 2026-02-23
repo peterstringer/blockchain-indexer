@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   BarChart3,
   Settings,
-  Github,
   Menu,
   X,
 } from "lucide-react";
@@ -75,14 +74,6 @@ export function Header({ wsStatus, activeTab, onTabChange }: HeaderProps) {
           </div>
           <div className="flex items-center gap-4">
             <WsIndicator status={wsStatus} />
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:block text-text-muted hover:text-text-secondary transition-colors"
-            >
-              <Github className="w-4 h-4" />
-            </a>
             {/* Mobile menu toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

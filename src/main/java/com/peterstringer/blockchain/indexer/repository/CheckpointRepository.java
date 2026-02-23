@@ -72,4 +72,24 @@ public interface CheckpointRepository extends JpaRepository<IndexerCheckpoint, L
                          @Param("blocksIndexed") Long blocksIndexed,
                          @Param("transactionsIndexed") Long transactionsIndexed,
                          @Param("now") OffsetDateTime now);
+
+    /**
+     * Updates the backfill floor block and increments counters for reverse backfill progress.
+     * Only updates the floor if the new value is lower than the current one (or current is null).
+     */
+    @Modifying
+    @Transactional
+    @Query("""
+            UPDATE IndexerCheckpoint c
+               SET c.backfillFloorBlock = :floorBlock,
+                   c.totalBlocksIndexed = c.totalBlocksIndexed + :blocksIndexed,
+                   c.totalTransactionsIndexed = c.totalTransactionsIndexed + :transactionsIndexed,
+                   c.lastUpdated = :now
+             WHERE c.chain = :chain
+            """)
+    int updateBackfillFloor(@Param("chain") String chain,
+                            @Param("floorBlock") Long floorBlock,
+                            @Param("blocksIndexed") Long blocksIndexed,
+                            @Param("transactionsIndexed") Long transactionsIndexed,
+                            @Param("now") OffsetDateTime now);
 }

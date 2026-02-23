@@ -1,4 +1,4 @@
-import { Play, Square, Clock, Activity } from "lucide-react";
+import { Play, Square, Activity } from "lucide-react";
 import { Card } from "@/components/common/Card";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { MetricValue } from "@/components/common/MetricValue";
@@ -65,11 +65,6 @@ export function OverviewBar({ status }: OverviewBarProps) {
           label="Throughput"
           value={`${totalBps.toFixed(1)}/s`}
           icon={<Activity className="w-3 h-3" />}
-        />
-        <MetricValue
-          label="Uptime"
-          value={status.uptime ?? "N/A"}
-          icon={<Clock className="w-3 h-3" />}
         />
       </div>
     </Card>

@@ -287,35 +287,70 @@ public class BlockIndexerService {
                     "Chain %s is already running (%s)".formatted(chain, existing.state));
         }
 
+        // Get the current chain head for reference
+        long chainHead = rpcClientService.getLatestBlockNumber(chain);
+
         ChainIndexingContext ctx = new ChainIndexingContext();
-        ctx.state = mode == IndexMode.BACKFILL
-                ? ChainState.RUNNING_BACKFILL
-                : ChainState.RUNNING_INCREMENTAL;
         ctx.startedAt = Instant.now();
+        ctx.chainHead = chainHead;
+        ctx.lastBlockNumber = chainHead;
         contexts.put(chain, ctx);
 
         registerMicrometerMetrics(chain, ctx);
 
-        ctx.task = chainExecutor.submit(() -> {
-            try {
-                if (mode == IndexMode.BACKFILL) {
-                    indexBackfill(chain, config);
-                } else {
-                    indexIncremental(chain, config);
-                }
-            } catch (Exception e) {
-                log.error("Indexing failed for chain={}: {}", chain, e.getMessage(), e);
-            } finally {
-                ctx.state = ChainState.STOPPED;
-                ctx.stopRequested = false;
-                log.info("Indexing loop exited for chain={}: {} blocks, {} txs, {} errors",
-                        chain, ctx.blocksProcessed.get(),
-                        ctx.transactionsProcessed.get(), ctx.errorCount.get());
-            }
-        });
+        if (mode == IndexMode.BACKFILL) {
+            // BACKFILL mode: start from chain head, index backward toward startBlock,
+            // while simultaneously tailing the chain head for new blocks.
+            ctx.state = ChainState.RUNNING_BACKFILL;
 
-        log.info("Started {} indexing for chain={} (start_block={}, demo={})",
-                mode, chain, config.getStartBlock(), rpcClientService.isDemoMode());
+            // 1. Start incremental tailing from chain head (new blocks)
+            ctx.incrementalTask = chainExecutor.submit(() -> {
+                try {
+                    indexIncrementalFromBlock(chain, config, chainHead);
+                } catch (Exception e) {
+                    log.error("Incremental tailing failed for chain={}: {}", chain, e.getMessage(), e);
+                }
+            });
+
+            // 2. Start reverse backfill from chain head toward startBlock
+            ctx.task = chainExecutor.submit(() -> {
+                try {
+                    indexReverseBackfill(chain, config, chainHead);
+                } catch (Exception e) {
+                    log.error("Reverse backfill failed for chain={}: {}", chain, e.getMessage(), e);
+                } finally {
+                    // When reverse backfill completes, transition to incremental-only
+                    if (!ctx.stopRequested) {
+                        ctx.state = ChainState.RUNNING_INCREMENTAL;
+                        log.info("Reverse backfill complete for chain={}, continuing with live tailing", chain);
+                    }
+                }
+            });
+
+            log.info("Started BACKFILL for chain={}: reverse from {} toward {}, live tailing from {} (demo={})",
+                    chain, chainHead, config.getStartBlock(), chainHead, rpcClientService.isDemoMode());
+
+        } else {
+            // INCREMENTAL mode: just tail the chain head
+            ctx.state = ChainState.RUNNING_INCREMENTAL;
+
+            ctx.task = chainExecutor.submit(() -> {
+                try {
+                    indexIncrementalFromBlock(chain, config, chainHead);
+                } catch (Exception e) {
+                    log.error("Incremental indexing failed for chain={}: {}", chain, e.getMessage(), e);
+                } finally {
+                    ctx.state = ChainState.STOPPED;
+                    ctx.stopRequested = false;
+                    log.info("Incremental indexing exited for chain={}: {} blocks, {} txs, {} errors",
+                            chain, ctx.blocksProcessed.get(),
+                            ctx.transactionsProcessed.get(), ctx.errorCount.get());
+                }
+            });
+
+            log.info("Started INCREMENTAL for chain={} from block {} (demo={})",
+                    chain, chainHead, rpcClientService.isDemoMode());
+        }
     }
 
     /**
@@ -336,19 +371,11 @@ public class BlockIndexerService {
         log.info("Stopping indexing for chain={}...", chain);
         ctx.stopRequested = true;
 
-        if (ctx.task != null) {
-            try {
-                ctx.task.get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                log.warn("Timed out waiting for chain={} to stop — cancelling task", chain);
-                ctx.task.cancel(true);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                ctx.task.cancel(true);
-            } catch (ExecutionException e) {
-                log.warn("Chain {} task completed with error: {}", chain, e.getMessage());
-            }
-        }
+        // Wait for both tasks (reverse backfill + incremental tailing)
+        awaitTask(ctx.task, chain, "backfill");
+        awaitTask(ctx.incrementalTask, chain, "incremental");
+
+        ctx.state = ChainState.STOPPED;
 
         // Flush remaining Parquet data for this chain's partitions
         try {
@@ -359,6 +386,21 @@ public class BlockIndexerService {
 
         log.info("Indexing stopped for chain={}: {} blocks, {} txs",
                 chain, ctx.blocksProcessed.get(), ctx.transactionsProcessed.get());
+    }
+
+    private void awaitTask(Future<?> task, String chain, String taskName) {
+        if (task == null) return;
+        try {
+            task.get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            log.warn("Timed out waiting for {} task on chain={} — cancelling", taskName, chain);
+            task.cancel(true);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            task.cancel(true);
+        } catch (ExecutionException e) {
+            log.warn("Chain {} {} task completed with error: {}", chain, taskName, e.getMessage());
+        }
     }
 
     /**
@@ -397,6 +439,16 @@ public class BlockIndexerService {
         boolean anyRunning = false;
         IndexerStatus.Mode overallMode = IndexerStatus.Mode.STOPPED;
 
+        // Load checkpoint data for cumulative counters
+        Map<String, IndexerCheckpoint> checkpoints = new LinkedHashMap<>();
+        try {
+            for (IndexerCheckpoint cp : checkpointRepository.findAllOrderByLastIndexedBlockDesc()) {
+                checkpoints.put(cp.getChain(), cp);
+            }
+        } catch (Exception e) {
+            log.debug("Could not load checkpoints for status: {}", e.getMessage());
+        }
+
         for (var entry : contexts.entrySet()) {
             ChainIndexingContext ctx = entry.getValue();
             if (ctx.state != ChainState.STOPPED) {
@@ -405,17 +457,22 @@ public class BlockIndexerService {
                         ? IndexerStatus.Mode.BACKFILL
                         : IndexerStatus.Mode.INCREMENTAL;
             }
-            chainStatuses.put(entry.getKey(), buildChainStatus(ctx));
+            chainStatuses.put(entry.getKey(), buildChainStatus(entry.getKey(), ctx, checkpoints.get(entry.getKey())));
         }
 
         // Include chains that haven't been started yet
         for (String chain : properties.getChains().keySet()) {
+            IndexerProperties.ChainConfig config = properties.getChains().get(chain);
+            IndexerCheckpoint cp = checkpoints.get(chain);
+            long lastBlk = cp != null ? cp.getLastIndexedBlock() : 0L;
             chainStatuses.putIfAbsent(chain, IndexerStatus.ChainStatus.builder()
-                    .lastBlock(0L)
-                    .blocksIndexed(0L)
-                    .transactionsIndexed(0L)
+                    .chainId(config != null ? (int) config.getChainId() : null)
+                    .lastBlock(lastBlk)
+                    .targetBlock(lastBlk)
+                    .blocksIndexed(cp != null ? cp.getTotalBlocksIndexed() : 0L)
+                    .transactionsIndexed(cp != null ? cp.getTotalTransactionsIndexed() : 0L)
                     .blocksPerSecond(0.0)
-                    .rpcHealth("NOT_STARTED")
+                    .rpcHealth("STOPPED")
                     .build());
         }
 
@@ -427,45 +484,52 @@ public class BlockIndexerService {
     }
 
     // =========================================================================
-    // Backfill indexing loop
+    // Reverse backfill: index from chain head backward toward startBlock
     // =========================================================================
 
     /**
-     * Processes a bounded range of historical blocks in configurable batch sizes.
+     * Indexes blocks in reverse chronological order — from the chain head
+     * backward toward the configured start block. This ensures the most recent
+     * data is available first while historical blocks fill in over time.
      *
-     * <p>Resumes from the persisted checkpoint and runs until either the target
-     * block is reached or a stop is requested. Each batch is:
-     * <ol>
-     *   <li>Fetched concurrently via {@link RpcClientService#getIndexedBlocksAsync}</li>
-     *   <li>Written to Parquet via {@link ParquetWriterService#writeBlocks}</li>
-     *   <li>Checkpointed to the database</li>
-     *   <li>Broadcast via WebSocket</li>
-     * </ol>
+     * <p>Resumes from the persisted {@code backfillFloorBlock} checkpoint if
+     * a previous reverse backfill was interrupted. Uses the same batch
+     * processing, Parquet writing, and analytics persistence as forward backfill.
+     *
+     * @param chain     the chain key
+     * @param config    chain configuration
+     * @param chainHead the chain head at the time indexing was started
      */
-    private void indexBackfill(String chain, IndexerProperties.ChainConfig config) {
+    private void indexReverseBackfill(String chain, IndexerProperties.ChainConfig config,
+                                      long chainHead) {
         IndexerCheckpoint checkpoint = loadOrCreateCheckpoint(chain, config);
-        long startBlock = checkpoint.getLastIndexedBlock() + 1;
-        long endBlock = config.getEndBlock() != null
-                ? config.getEndBlock()
-                : rpcClientService.getLatestBlockNumber(chain);
+        ChainIndexingContext ctx = contexts.get(chain);
 
-        if (startBlock > endBlock) {
-            log.info("Backfill already complete for chain={}: at block {}", chain, startBlock - 1);
+        // Determine where to resume: previous floor or chain head
+        long currentFloor = checkpoint.getBackfillFloorBlock() != null
+                ? checkpoint.getBackfillFloorBlock()
+                : chainHead + 1; // +1 because chain head is handled by incremental
+
+        long targetFloor = config.getStartBlock();
+
+        if (currentFloor <= targetFloor) {
+            log.info("Reverse backfill already complete for chain={}: floor={} <= target={}",
+                    chain, currentFloor, targetFloor);
+            ctx.reverseBackfillComplete = true;
+            ctx.backfillFloorBlock = currentFloor;
             return;
         }
 
-        long totalBlocks = endBlock - startBlock + 1;
-        log.info("Starting backfill for chain={}: blocks {} → {} ({} total)",
-                chain, startBlock, endBlock, totalBlocks);
+        long totalBlocks = currentFloor - targetFloor;
+        log.info("Starting reverse backfill for chain={}: blocks {} ← {} ({} total)",
+                chain, currentFloor - 1, targetFloor, totalBlocks);
 
         int batchSize = properties.getConcurrency().getBatchSize();
-        ChainIndexingContext ctx = contexts.get(chain);
+        ctx.backfillFloorBlock = currentFloor;
 
-        for (long batchStart = startBlock; batchStart <= endBlock && !ctx.stopRequested;
-             batchStart += batchSize) {
-
-            long batchEnd = Math.min(batchStart + batchSize - 1, endBlock);
-            List<Long> blockNumbers = buildBlockNumberList(batchStart, batchEnd);
+        for (long high = currentFloor - 1; high >= targetFloor && !ctx.stopRequested; ) {
+            long low = Math.max(high - batchSize + 1, targetFloor);
+            List<Long> blockNumbers = buildBlockNumberList(low, high);
 
             Instant batchStartTime = Instant.now();
 
@@ -477,7 +541,8 @@ public class BlockIndexerService {
                 if (blocks.isEmpty()) {
                     ctx.errorCount.incrementAndGet();
                     incrementErrorCounter(chain);
-                    log.warn("Empty batch {}-{} on chain={}", batchStart, batchEnd, chain);
+                    log.warn("Empty reverse batch {}-{} on chain={}", low, high, chain);
+                    high = low - 1;
                     continue;
                 }
 
@@ -494,83 +559,98 @@ public class BlockIndexerService {
 
                 ctx.blocksProcessed.addAndGet(blocks.size());
                 ctx.transactionsProcessed.addAndGet(txCount);
-                ctx.lastBlockNumber = batchEnd;
-                ctx.lastBlockHash = blocks.getLast().getBlockHash();
+                ctx.backfillFloorBlock = low;
                 ctx.lastBatchAt = Instant.now();
 
-                // Persist checkpoint
-                updateCheckpoint(chain, batchEnd, blocks.size(), txCount);
+                // Persist backfill floor checkpoint
+                updateBackfillFloor(chain, low, blocks.size(), txCount);
 
                 // Record metrics
                 Duration batchDuration = Duration.between(batchStartTime, Instant.now());
                 recordBatchMetrics(chain, ctx, blocks.size(), txCount, batchDuration);
 
-                // WebSocket: progress + last 10 block notifications
-                sendProgressUpdate(chain, ctx, endBlock);
+                // WebSocket: progress + block notifications
+                sendProgressUpdate(chain, ctx, ctx.chainHead);
                 sendRecentBlockNotifications(chain, blocks);
 
                 // Log progress
                 double bps = calculateBlocksPerSecond(ctx);
-                long remaining = endBlock - batchEnd;
+                long remaining = low - targetFloor;
                 String eta = bps > 0
                         ? formatDuration(Duration.ofSeconds((long) (remaining / bps)))
                         : "unknown";
 
-                log.info("chain={} backfill: block {}/{} ({} left) | {}/s | ETA {} | batch: {} blk, {} tx, {}ms",
-                        chain, batchEnd, endBlock, remaining,
+                log.info("chain={} reverse-backfill: floor {} ← target {} ({} left) | {}/s | ETA {} | batch: {} blk, {} tx, {}ms",
+                        chain, low, targetFloor, remaining,
                         String.format("%.1f", bps), eta,
                         blocks.size(), txCount, batchDuration.toMillis());
 
             } catch (CompletionException | RpcClientService.RpcException e) {
                 ctx.errorCount.incrementAndGet();
                 incrementErrorCounter(chain);
-                log.error("Batch {}-{} failed on chain={}: {}",
-                        batchStart, batchEnd, chain, e.getMessage());
+                log.error("Reverse batch {}-{} failed on chain={}: {}",
+                        low, high, chain, e.getMessage());
             } catch (Exception e) {
                 ctx.errorCount.incrementAndGet();
                 incrementErrorCounter(chain);
-                log.error("Unexpected error in batch {}-{} on chain={}: {}",
-                        batchStart, batchEnd, chain, e.getMessage(), e);
+                log.error("Unexpected error in reverse batch {}-{} on chain={}: {}",
+                        low, high, chain, e.getMessage(), e);
                 if (isCriticalError(e)) {
-                    log.error("Critical error — aborting backfill for chain={}", chain);
+                    log.error("Critical error — aborting reverse backfill for chain={}", chain);
                     break;
                 }
             }
+
+            high = low - 1;
         }
 
         if (!ctx.stopRequested) {
-            log.info("Backfill complete for chain={}: {} blocks, {} txs indexed",
-                    chain, ctx.blocksProcessed.get(), ctx.transactionsProcessed.get());
+            ctx.reverseBackfillComplete = true;
+            log.info("Reverse backfill complete for chain={}: {} blocks indexed down to block {}",
+                    chain, ctx.blocksProcessed.get(), targetFloor);
         }
     }
 
     // =========================================================================
-    // Incremental indexing loop
+    // Incremental indexing loop (tails chain head for new blocks)
     // =========================================================================
 
     /**
-     * Continuously polls for new blocks and processes them as they appear.
+     * Continuously polls for new blocks from a given starting point.
      *
      * <p>Implements chain-reorg detection by comparing each block's
      * {@code parentHash} against the hash of the previously indexed block.
-     * On reorg, the indexer rolls back and re-processes from the fork point
-     * (up to {@value #REORG_MAX_DEPTH} blocks back).
+     * On reorg, the indexer rolls back and re-processes from the fork point.
      *
      * <p>The poll interval defaults to {@value #INCREMENTAL_POLL_MS}ms,
      * matching typical EVM block times. On RPC errors, the interval is
      * doubled temporarily to reduce load on recovering providers.
+     *
+     * @param chain          the chain key
+     * @param config         chain configuration
+     * @param startFromBlock block to start tailing from (the chain head at start time)
      */
-    private void indexIncremental(String chain, IndexerProperties.ChainConfig config) {
-        IndexerCheckpoint checkpoint = loadOrCreateCheckpoint(chain, config);
-        ChainIndexingContext ctx = contexts.get(chain);
-        ctx.lastBlockNumber = checkpoint.getLastIndexedBlock();
+    private void indexIncrementalFromBlock(String chain, IndexerProperties.ChainConfig config,
+                                           long startFromBlock) {
+        // Ensure checkpoint exists (may already have been created by reverse backfill)
+        loadOrCreateCheckpoint(chain, config);
 
-        log.info("Starting incremental indexing for chain={} from block {}",
+        ChainIndexingContext ctx = contexts.get(chain);
+        // Use the higher of: the checkpoint's lastIndexedBlock or the provided start block.
+        // On restart, checkpoint may be ahead of startFromBlock.
+        IndexerCheckpoint cp = checkpointRepository.findByChain(chain).orElse(null);
+        long resumeFrom = cp != null && cp.getLastIndexedBlock() > startFromBlock
+                ? cp.getLastIndexedBlock()
+                : startFromBlock;
+        ctx.lastBlockNumber = resumeFrom;
+
+        log.info("Starting incremental tailing for chain={} from block {}",
                 chain, ctx.lastBlockNumber);
 
         while (!ctx.stopRequested) {
             try {
                 long latestBlock = rpcClientService.getLatestBlockNumber(chain);
+                ctx.chainHead = latestBlock;
 
                 if (latestBlock <= ctx.lastBlockNumber) {
                     sleep(INCREMENTAL_POLL_MS);
@@ -707,6 +787,20 @@ public class BlockIndexerService {
             }
         } catch (Exception e) {
             log.error("Failed to update checkpoint for chain={}: {}", chain, e.getMessage());
+        }
+    }
+
+    private void updateBackfillFloor(String chain, long floorBlock,
+                                     long blocksIndexed, long txCount) {
+        try {
+            int updated = checkpointRepository.updateBackfillFloor(
+                    chain, floorBlock, blocksIndexed, txCount,
+                    OffsetDateTime.now(ZoneOffset.UTC));
+            if (updated == 0) {
+                log.warn("Backfill floor update returned 0 rows for chain={}", chain);
+            }
+        } catch (Exception e) {
+            log.error("Failed to update backfill floor for chain={}: {}", chain, e.getMessage());
         }
     }
 
@@ -851,11 +945,20 @@ public class BlockIndexerService {
                 : 0.0;
     }
 
-    private IndexerStatus.ChainStatus buildChainStatus(ChainIndexingContext ctx) {
+    private IndexerStatus.ChainStatus buildChainStatus(String chain, ChainIndexingContext ctx, IndexerCheckpoint cp) {
+        // Use cumulative checkpoint data + session data for accurate totals
+        long totalBlocks = cp != null ? cp.getTotalBlocksIndexed() : ctx.blocksProcessed.get();
+        long totalTxs = cp != null ? cp.getTotalTransactionsIndexed() : ctx.transactionsProcessed.get();
+        long lastBlock = ctx.lastBlockNumber > 0 ? ctx.lastBlockNumber : (cp != null ? cp.getLastIndexedBlock() : 0L);
+        long target = ctx.chainHead > 0 ? ctx.chainHead : lastBlock;
+
+        IndexerProperties.ChainConfig config = properties.getChains().get(chain);
         return IndexerStatus.ChainStatus.builder()
-                .lastBlock(ctx.lastBlockNumber)
-                .blocksIndexed(ctx.blocksProcessed.get())
-                .transactionsIndexed(ctx.transactionsProcessed.get())
+                .chainId(config != null ? (int) config.getChainId() : null)
+                .lastBlock(lastBlock)
+                .targetBlock(target)
+                .blocksIndexed(totalBlocks)
+                .transactionsIndexed(totalTxs)
                 .blocksPerSecond(calculateBlocksPerSecond(ctx))
                 .rpcHealth(ctx.state.name())
                 .build();
@@ -924,9 +1027,13 @@ public class BlockIndexerService {
         final AtomicLong errorCount = new AtomicLong(0);
         volatile Instant startedAt;
         volatile Instant lastBatchAt;
-        volatile long lastBlockNumber;
+        volatile long lastBlockNumber;        // highest block indexed (incremental head)
         volatile String lastBlockHash;
-        Future<?> task;
+        volatile long backfillFloorBlock;     // lowest block reached in reverse backfill
+        volatile boolean reverseBackfillComplete = false;
+        volatile long chainHead;              // latest known chain head at start
+        Future<?> task;                       // primary task (reverse backfill or incremental)
+        Future<?> incrementalTask;            // concurrent incremental tailing task
     }
 
     // =========================================================================

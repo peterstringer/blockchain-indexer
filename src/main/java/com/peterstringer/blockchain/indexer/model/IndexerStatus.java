@@ -46,7 +46,9 @@ public class IndexerStatus {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ChainStatus {
+        private Integer chainId;
         private Long lastBlock;
+        private Long targetBlock;
         private Long blocksIndexed;
         private Long transactionsIndexed;
         private Double blocksPerSecond;
