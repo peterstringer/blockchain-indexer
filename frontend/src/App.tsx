@@ -4,6 +4,7 @@ import type { TabId } from "@/components/layout/Header";
 import { DashboardPage, DashboardPageSkeleton, DashboardPageError } from "@/pages/DashboardPage";
 import { AnalyticsPage, AnalyticsPageSkeleton } from "@/pages/AnalyticsPage";
 import { SettingsPage, SettingsPageSkeleton } from "@/pages/SettingsPage";
+import { ExportPage, ExportPageSkeleton } from "@/pages/ExportPage";
 import { useWebSocketConnection } from "@/hooks/useWebSocket";
 import { useIndexerStatus, useStartIndexing, useStopIndexing } from "@/hooks/useIndexerStatus";
 
@@ -38,10 +39,11 @@ export default function App() {
         }
       }
 
-      // Tab switching: 1, 2, 3
+      // Tab switching: 1, 2, 3, 4
       if (e.key === "1") setActiveTab("dashboard");
       if (e.key === "2") setActiveTab("analytics");
-      if (e.key === "3") setActiveTab("settings");
+      if (e.key === "3") setActiveTab("export");
+      if (e.key === "4") setActiveTab("settings");
     },
     [status, startMutation, stopMutation]
   );
@@ -56,6 +58,7 @@ export default function App() {
     const tabNames: Record<TabId, string> = {
       dashboard: "Dashboard",
       analytics: "Analytics",
+      export: "Export",
       settings: "Settings",
     };
     const prefix = status?.running ? "● " : "";
@@ -68,6 +71,7 @@ export default function App() {
         <>
           {activeTab === "dashboard" && <DashboardPageSkeleton />}
           {activeTab === "analytics" && <AnalyticsPageSkeleton />}
+          {activeTab === "export" && <ExportPageSkeleton />}
           {activeTab === "settings" && <SettingsPageSkeleton />}
         </>
       ) : error ? (
@@ -76,6 +80,7 @@ export default function App() {
         <>
           {activeTab === "dashboard" && <DashboardPage status={status} />}
           {activeTab === "analytics" && <AnalyticsPage status={status} />}
+          {activeTab === "export" && <ExportPage status={status} />}
           {activeTab === "settings" && <SettingsPage status={status} />}
         </>
       ) : null}

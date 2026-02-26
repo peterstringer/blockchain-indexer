@@ -53,5 +53,14 @@ public class IndexerStatus {
         private Long transactionsIndexed;
         private Double blocksPerSecond;
         private String rpcHealth;
+
+        /** Reverse backfill progress as a percentage (0.0–100.0), null when not backfilling. */
+        private Double backfillProgress;
+        /** Lowest block number reached during reverse backfill. */
+        private Long backfillFloorBlock;
+        /** Configured start block — the target floor for reverse backfill. */
+        private Long backfillTargetBlock;
+        /** Whether the reverse backfill has completed. */
+        private Boolean reverseBackfillComplete;
     }
 }

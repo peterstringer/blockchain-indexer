@@ -5,7 +5,7 @@
 <h1 align="center">Multi-Chain Block Indexer</h1>
 
 <p align="center">
-  A blockchain indexer that fetches blocks from multiple EVM chains via JSON-RPC, processes them concurrently, and exports to Apache Parquet for analytics.
+  A full-stack blockchain indexer that fetches blocks from multiple EVM chains via JSON-RPC, processes them concurrently, persists analytics to PostgreSQL, exports to Apache Parquet, and streams real-time updates to an interactive React dashboard.
 </p>
 
 <p align="center">
@@ -22,41 +22,33 @@
 
 ## Overview
 
-The Multi-Chain Block Indexer connects to EVM-compatible blockchains via JSON-RPC, fetches blocks and transactions concurrently, persists indexing progress to PostgreSQL for crash recovery, writes analytical data to Apache Parquet files, and streams real-time updates to a React dashboard over WebSocket.
+The Multi-Chain Block Indexer connects to EVM-compatible blockchains via JSON-RPC, fetches blocks and transactions concurrently, persists block analytics to PostgreSQL, writes raw data to Apache Parquet files, and streams real-time updates to a React dashboard over WebSocket.
 
 ### Key Features
 
-- **Multi-chain indexing** - Ethereum, Polygon, and Arbitrum with independent indexing loops
-- **Two indexing modes** - Backfill (historical ranges) and Incremental (live tail with reorg detection)
-- **Circuit breaker + rate limiting** - Per-provider health tracking with automatic failover
-- **Apache Parquet export** - Columnar storage with SNAPPY compression and chain/date partitioning
-- **Crash-safe checkpoints** - Atomic checkpoint updates in PostgreSQL for resume-on-restart
-- **Real-time dashboard** - React + WebSocket with live throughput charts, gas analytics, and RPC health
-- **Demo mode** - Deterministic synthetic data generation without RPC or database dependencies
-- **Prometheus metrics** - Micrometer integration with `/actuator/prometheus` endpoint
+- **Multi-chain indexing** — Ethereum, Polygon, and Arbitrum with independent indexing loops
+- **Two indexing modes** — Backfill (historical ranges) and Incremental (live tail with reorg detection)
+- **Circuit breaker + rate limiting** — Per-provider health tracking with automatic failover
+- **Block analytics** — Per-block metrics persisted to PostgreSQL with 12 historical query endpoints
+- **Interactive dashboard** — React 19 with live throughput, gas analytics, heatmaps, and RPC health
+- **Data export** — Customizable CSV/Parquet export with column selection and streaming download
+- **Apache Parquet** — Columnar storage with SNAPPY compression and chain/date partitioning
+- **Crash-safe checkpoints** — Atomic checkpoint updates in PostgreSQL for resume-on-restart
+- **Demo mode** — Deterministic synthetic data generation without RPC or database dependencies
+- **Prometheus metrics** — Micrometer integration with `/actuator/prometheus` endpoint
 
 ---
 
 ## Why This Project
 
-This project demonstrates the kind of data infrastructure work done at companies like **Dune Analytics** - ingesting, transforming, and storing blockchain data at scale for analytical queries.
+This project demonstrates the kind of data infrastructure work done at companies like **Dune Analytics** — ingesting, transforming, and storing blockchain data at scale for analytical queries.
 
-### Skills Demonstrated
-
-| Area | Details |
-|------|---------|
-| **Concurrent systems** | Two-pool executor model, batch processing, thread-safe buffering |
-| **Distributed systems patterns** | Circuit breaker state machine, rate limiting, crash recovery, reorg detection |
-| **Data engineering** | Parquet columnar storage, Avro schemas, partition strategies, compression |
-| **Full-stack development** | Spring Boot REST API + React/TypeScript dashboard + WebSocket real-time |
-| **Production readiness** | Docker multi-stage builds, CI/CD, health checks, Prometheus metrics, Flyway migrations |
-| **Testing** | 129 unit tests, Testcontainers integration tests, synthetic data generation |
 
 ### Technologies
 
 **Backend:** Java 25, Spring Boot 4.0.2, Web3j, Apache Parquet, Apache Avro, Hadoop, PostgreSQL, Flyway, Lombok
 
-**Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack React Query, Recharts, STOMP/SockJS
+**Frontend:** React 19, TypeScript 5.9, Vite 7, Tailwind CSS v4, TanStack React Query v5, Recharts 3.7, STOMP/SockJS
 
 **Infrastructure:** Docker, GitHub Actions, Testcontainers, Prometheus/Micrometer
 
@@ -79,13 +71,13 @@ graph TB
     end
 
     subgraph Storage["Storage"]
-        PG[("PostgreSQL<br/><i>Checkpoints + Metrics</i>")]
+        PG[("PostgreSQL<br/><i>Analytics + Checkpoints</i>")]
         PQ[("Parquet Files<br/><i>Blocks + Transactions</i>")]
     end
 
     subgraph Frontend["React Dashboard"]
         WS["WebSocket<br/><i>STOMP over SockJS</i>"]
-        UI["Dashboard UI<br/><i>Charts + Controls</i>"]
+        UI["Dashboard UI<br/><i>Charts + Analytics + Export</i>"]
     end
 
     A1 & A2 & A3 --> RC
@@ -107,11 +99,12 @@ graph TB
 | Component | Responsibility |
 |-----------|---------------|
 | **BlockIndexerService** | Orchestrates chain lifecycle, manages backfill/incremental loops, coordinates concurrency |
-| **RpcClientService** | Web3j client management, circuit breaker state machine, token-bucket rate limiting, round-robin load balancing |
+| **RpcClientService** | Web3j client management, circuit breaker state machine, token-bucket rate limiting, provider failover |
+| **BlockAnalyticsService** | Converts indexed blocks to analytics summaries, persists to PostgreSQL (non-blocking) |
 | **ParquetWriterService** | Buffers records in memory, flushes to timestamped Parquet files with configurable partitioning |
-| **WebSocketService** | Broadcasts progress, block notifications, and RPC health changes with per-topic throttling |
+| **WebSocketService** | Broadcasts progress, block notifications, and RPC health with per-topic throttling |
+| **ExportService** | Streams block analytics data as CSV or Parquet with column selection |
 | **SyntheticDataProvider** | Generates deterministic, realistic block/transaction data for demo mode |
-| **CheckpointRepository** | Persists last-indexed block per chain for crash recovery |
 
 ### Concurrency Model
 
@@ -152,16 +145,22 @@ Currently supported: **Ethereum** (chain ID 1), **Polygon** (chain ID 137), **Ar
 
 ### Indexing Modes
 
-**Backfill** - Index a historical block range:
+**Backfill** — Index a historical block range:
 - Processes blocks in configurable batch sizes (default 50)
 - Concurrent fetching within each batch
 - Displays ETA based on throughput
-- Stops at `end-block` or chain head
+- Supports reverse backfill (indexing backward toward genesis)
 
-**Incremental** - Live tail with reorg detection:
+**Incremental** — Live tail with reorg detection:
 - Polls for new blocks every 5 seconds
 - Compares `parentHash` to detect chain reorganizations
 - On reorg: rolls back checkpoint and re-indexes from fork point
+
+Both modes can run simultaneously for the same chain.
+
+### Block Analytics
+
+Per-block metrics are persisted to PostgreSQL with 23 columns covering gas pricing, block fullness, transaction type breakdowns, and timing data. The analytics table powers 12 historical query endpoints and the data export feature.
 
 ### Parquet Export
 
@@ -174,15 +173,31 @@ Blocks and transactions are written to separate Parquet files with:
 
 ### Real-Time Dashboard
 
-The React dashboard provides:
-- **Overview bar** with aggregate statistics
-- **Chain cards** with per-chain status, throughput, and start/stop controls
-- **Throughput chart** showing blocks/second over time
-- **Gas price chart** with base fee and utilization trends
-- **Live block feed** streaming recently indexed blocks
-- **RPC health panel** showing circuit breaker state per provider
-- **Analytics tab** with gas price aggregation queries and block/tx lookup
-- **Settings tab** for checkpoint management and Parquet statistics
+The React dashboard provides four tabs:
+
+**Dashboard** — Live indexing status:
+- Overview bar with aggregate statistics and global controls
+- Chain cards with per-chain status, throughput, lag, and start/stop/sync/backfill controls
+- Coverage bar showing indexed range with glow animation on new blocks
+- Collapsible system details with live block feed and RPC health panel
+
+**Analytics** — Historical analysis (from PostgreSQL):
+- Date range picker with presets (7D, 30D, 90D, All) and chain filter
+- Gas Market chart (base fee + effective gas price trends)
+- Block Space Demand chart (block fullness vs base fee correlation)
+- Transaction Type Evolution (EIP-1559 vs legacy vs contract, stacked area)
+- Failure Analysis chart (failed tx rate vs gas price, dual Y-axis)
+- Transaction Density Heatmap (hour x day-of-week interactive heatmap)
+
+**Export** — Customizable data export:
+- Three-step wizard: select date range → choose columns (19 available) → download (CSV or Parquet)
+- Streaming download for large datasets
+- Column selection grouped by category (Block Info, Gas Pricing, Block Fullness, Transaction Counts, Gas per Type)
+
+**Settings** — Configuration and monitoring:
+- Chain configuration with editable start blocks
+- Checkpoint table showing indexing progress per chain
+- System health indicators
 
 ### Demo Mode
 
@@ -345,6 +360,9 @@ curl http://localhost:8080/api/indexer/health
 
 # Operational metrics
 curl http://localhost:8080/api/indexer/metrics
+
+# Chain configuration
+curl http://localhost:8080/api/indexer/config
 ```
 
 ### Checkpoints
@@ -370,6 +388,46 @@ curl http://localhost:8080/api/analytics/blocks/ethereum/21000000
 curl http://localhost:8080/api/analytics/transactions/0xabc123...
 ```
 
+### Historical Analytics
+
+All endpoints accept `from` and `to` (ISO dates) and optional `chain` filter.
+
+```bash
+# Daily gas market trends
+curl 'http://localhost:8080/api/analytics/historical/gas-market?from=2026-01-01&to=2026-02-25'
+
+# Block fullness over time
+curl 'http://localhost:8080/api/analytics/historical/block-fullness/daily?chain=ethereum&from=2026-01-01'
+
+# Transaction type breakdown
+curl 'http://localhost:8080/api/analytics/historical/transaction-types/daily?from=2026-02-01'
+
+# Failed transaction rate
+curl 'http://localhost:8080/api/analytics/historical/failure-rate?chain=ethereum&from=2026-01-01'
+
+# Transaction density heatmap (hour x day-of-week)
+curl 'http://localhost:8080/api/analytics/historical/tx-density-heatmap?from=2026-01-01'
+
+# Cross-chain comparison
+curl 'http://localhost:8080/api/analytics/historical/cross-chain-normalised?from=2026-01-01'
+
+# Data availability per chain
+curl http://localhost:8080/api/analytics/historical/data-availability
+```
+
+### Data Export
+
+```bash
+# Get export metadata (available columns, chains, date ranges)
+curl http://localhost:8080/api/export/metadata
+
+# Export as CSV with selected columns
+curl -o analytics.csv 'http://localhost:8080/api/export/block-analytics?format=csv&chain=ethereum&from=2026-01-01&to=2026-02-25&columns=chain,block_number,base_fee,avg_gas_price,transaction_count'
+
+# Export as Parquet
+curl -o analytics.parquet 'http://localhost:8080/api/export/block-analytics?format=parquet&chain=ethereum&from=2026-01-01'
+```
+
 ---
 
 ## Dashboard
@@ -377,23 +435,31 @@ curl http://localhost:8080/api/analytics/transactions/0xabc123...
 The React dashboard runs at **http://localhost:8080** (served by Spring Boot) or **http://localhost:3000** (Vite dev server with hot reload).
 
 ### Dashboard Tab
-- **Overview bar** - Total blocks/transactions indexed, overall running state
-- **Chain cards** - Per-chain status with live throughput, start/stop controls
-- **Throughput chart** - Blocks/second over time per chain (Recharts)
-- **Gas chart** - Base fee and gas utilization trends
-- **Block feed** - Live stream of recently indexed blocks
-- **RPC health panel** - Circuit breaker state per provider
+- **Overview bar** — Total blocks/transactions indexed, overall running state, global controls
+- **Chain cards** — Per-chain status with live throughput, coverage bar, lag indicator, RPC health, and start/stop/sync/backfill controls
+- **System details** — Collapsible panel with aggregated live block feed and RPC provider health
 
 ### Analytics Tab
-- Gas price aggregation queries with interactive charts
-- Block detail lookup by chain and number
-- Transaction search by hash across all chains
+- **Date range picker** — Sticky controls with presets (7D, 30D, 90D, All) and chain filter
+- **Gas Market chart** — Base fee and effective gas price trends over time
+- **Block Space Demand** — Block fullness percentage correlated with base fee
+- **Transaction Type Evolution** — EIP-1559 vs legacy vs contract creation over time
+- **Failure Analysis** — Failed transaction rate vs gas price correlation
+- **Transaction Density Heatmap** — Interactive hour x day-of-week visualization
+
+### Export Tab
+- **Three-step wizard** — Select data range → choose columns → download (CSV or Parquet)
+- **19 selectable columns** grouped by category
+- **Streaming download** for large datasets
 
 ### Settings Tab
-- Start/stop individual chains or all at once
-- Toggle between BACKFILL and INCREMENTAL modes
-- View and reset checkpoints
-- Parquet writer statistics (buffered records, files written)
+- Chain configuration with editable start blocks
+- Checkpoint management and status monitoring
+- System health indicators
+
+### Keyboard Shortcuts
+- **Space** — Toggle indexing on/off
+- **1/2/3/4** — Switch between tabs
 
 ---
 
@@ -450,7 +516,7 @@ print(df[["block_number", "transaction_count", "gas_used_percentage", "base_fee_
 ### Running Tests
 
 ```bash
-# Unit tests only (129 tests)
+# Unit tests only (131 tests)
 mvn test
 
 # Unit + integration tests (requires Docker for Testcontainers)
@@ -463,39 +529,47 @@ mvn verify
 blockchain-indexer/
 ├── src/main/java/com/peterstringer/blockchain/indexer/
 │   ├── config/          # Spring configuration and properties binding
-│   ├── controller/      # REST API endpoints (IndexerController, AnalyticsController)
-│   ├── model/           # Domain objects (IndexedBlock, IndexedTransaction)
-│   ├── repository/      # JPA repositories (Checkpoint, Metrics, RpcHealth)
-│   └── service/         # Core services (BlockIndexer, RpcClient, ParquetWriter, WebSocket)
+│   ├── controller/      # REST API (Indexer, Analytics, Historical, Export, ExceptionHandler)
+│   ├── dto/             # Request/response data transfer objects
+│   ├── exception/       # Custom exceptions (ChainNotFound, AlreadyRunning, NotRunning)
+│   ├── model/           # Domain objects (IndexedBlock, IndexedTransaction, BlockAnalytics)
+│   │   └── ws/          # WebSocket message types (Progress, Block, RpcHealth)
+│   ├── repository/      # JPA repositories (Analytics, Checkpoint, Metrics, RpcHealth)
+│   └── service/         # Core services (BlockIndexer, RpcClient, ParquetWriter,
+│                        #   BlockAnalytics, WebSocket, SyntheticData, Export)
 ├── src/main/resources/
-│   ├── db/migration/    # Flyway SQL migrations (V1-V3)
-│   └── application.yml  # Application configuration
+│   ├── db/migration/    # Flyway SQL migrations (V1–V6)
+│   ├── application.yml  # Main configuration
+│   ├── application-demo.yml   # Demo profile (H2 database)
+│   └── application-local.yml  # Local development profile
 ├── src/test/
-│   ├── java/.../         # Unit tests (*Test.java) and integration tests (*IT.java)
-│   └── resources/        # Test profiles (application-integration.yml)
-├── frontend/             # React/TypeScript dashboard
+│   └── java/.../        # Unit tests (*Test.java) and integration tests (*IT.java)
+├── frontend/            # React/TypeScript dashboard
 │   ├── src/
-│   │   ├── components/   # UI components (charts, cards, panels)
-│   │   ├── pages/        # Dashboard, Analytics, Settings pages
-│   │   ├── hooks/        # Custom React hooks (WebSocket, API)
-│   │   └── services/     # API client and WebSocket service
+│   │   ├── pages/       # Page containers (Dashboard, Analytics, Export, Settings)
+│   │   ├── components/  # UI components (charts, cards, panels, common)
+│   │   ├── hooks/       # Custom React hooks (WebSocket, API, analytics)
+│   │   ├── services/    # API client and WebSocket service
+│   │   ├── types/       # TypeScript interfaces
+│   │   └── utils/       # Formatting utilities
 │   └── vite.config.ts
-├── docker/               # Docker entrypoint script
-├── Dockerfile            # Multi-stage build (Node + Maven + JRE)
-├── docker-compose.yml    # Production stack
-├── docker-compose.dev.yml    # Dev override (PostgreSQL only)
-└── docker-compose.demo.yml   # Demo mode override
+├── docker/              # Docker entrypoint script
+├── Dockerfile           # Multi-stage build (Node + Maven + JRE)
+├── docker-compose.yml       # Production stack
+├── docker-compose.dev.yml   # Dev override (PostgreSQL only)
+└── docker-compose.demo.yml  # Demo mode override
 ```
 
 ### Database Schema
 
-Managed by Flyway with 3 migrations:
+Managed by Flyway with 6 migrations:
 
-| Table | Purpose |
-|-------|---------|
-| `indexer_checkpoints` | Last indexed block per chain for crash recovery |
-| `indexer_metrics` | Time-series operational metrics (blocks/sec, error rates) |
-| `rpc_provider_health` | Circuit breaker state per RPC provider |
+| Table | Migration | Purpose |
+|-------|-----------|---------|
+| `indexer_checkpoints` | V1, V6 | Last indexed block per chain + backfill floor for crash recovery |
+| `indexer_metrics` | V2 | Time-series operational metrics (blocks/sec, error rates) |
+| `rpc_provider_health` | V3 | Circuit breaker state per RPC provider |
+| `block_analytics` | V4, V5 | Per-block analytics with 23 columns (gas, transactions, timing) |
 
 ---
 
@@ -557,11 +631,12 @@ You may use this software for non-commercial purposes including research, person
 
 ## Acknowledgments
 
-- [Web3j](https://github.com/web3j/web3j) - Java library for Ethereum JSON-RPC
-- [Apache Parquet](https://parquet.apache.org/) - Columnar storage format
-- [Spring Boot](https://spring.io/projects/spring-boot) - Application framework
-- [Recharts](https://recharts.org/) - React charting library
-- [Testcontainers](https://testcontainers.com/) - Docker-based integration testing
+- [Web3j](https://github.com/web3j/web3j) — Java library for Ethereum JSON-RPC
+- [Apache Parquet](https://parquet.apache.org/) — Columnar storage format
+- [Spring Boot](https://spring.io/projects/spring-boot) — Application framework
+- [Recharts](https://recharts.org/) — React charting library
+- [TanStack Query](https://tanstack.com/query) — Server state management for React
+- [Testcontainers](https://testcontainers.com/) — Docker-based integration testing
 
 ---
 

@@ -385,6 +385,106 @@ public class IndexerController {
     }
 
     // =========================================================================
+    // GET /config
+    // =========================================================================
+
+    /**
+     * Returns the current chain configuration for all configured chains.
+     *
+     * <p>Includes runtime-overridable values such as {@code startBlock}.
+     *
+     * @return per-chain configuration
+     */
+    @Operation(summary = "Get chain configuration",
+            description = "Returns per-chain configuration including startBlock, chainId, name, and blockTimeMs.")
+    @ApiResponse(responseCode = "200", description = "Configuration retrieved successfully")
+    @GetMapping("/config")
+    public ResponseEntity<List<Map<String, Object>>> getConfig() {
+        List<Map<String, Object>> configs = new java.util.ArrayList<>();
+        properties.getChains().forEach((key, config) -> {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("chain", key);
+            entry.put("name", config.getName());
+            entry.put("chainId", config.getChainId());
+            entry.put("startBlock", config.getStartBlock());
+            entry.put("blockTimeMs", config.getBlockTimeMs());
+            configs.add(entry);
+        });
+        return ResponseEntity.ok(configs);
+    }
+
+    // =========================================================================
+    // PUT /config/chains/{chain}/start-block
+    // =========================================================================
+
+    /**
+     * Updates the start block for a chain at runtime.
+     *
+     * <p>This is an in-memory override — it does not persist to
+     * {@code application.yml}. On application restart, the value
+     * reverts to the configured default. The chain must not be
+     * actively running when the start block is changed.
+     *
+     * @param chain the chain key
+     * @param body  JSON body with a {@code startBlock} field
+     * @return the updated configuration
+     */
+    @Operation(summary = "Update start block for a chain",
+            description = "Sets the backfill target block at runtime. Chain must be stopped. Resets on app restart.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Start block updated"),
+            @ApiResponse(responseCode = "400", description = "Invalid start block value"),
+            @ApiResponse(responseCode = "404", description = "Chain not configured"),
+            @ApiResponse(responseCode = "409", description = "Chain is actively running")
+    })
+    @org.springframework.web.bind.annotation.PutMapping("/config/chains/{chain}/start-block")
+    public ResponseEntity<Map<String, Object>> updateStartBlock(
+            @PathVariable String chain,
+            @RequestBody Map<String, Object> body) {
+
+        IndexerProperties.ChainConfig config = properties.getChains().get(chain);
+        if (config == null) {
+            throw new ChainNotFoundException(chain);
+        }
+
+        Object startBlockObj = body.get("startBlock");
+        if (startBlockObj == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Missing 'startBlock' in request body"));
+        }
+
+        long newStartBlock;
+        try {
+            newStartBlock = ((Number) startBlockObj).longValue();
+        } catch (ClassCastException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "'startBlock' must be a number"));
+        }
+
+        if (newStartBlock < 0) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "startBlock must be >= 0"));
+        }
+
+        // Prevent changes while chain is actively indexing
+        IndexerStatus status = indexerService.getStatus();
+        IndexerStatus.ChainStatus chainStatus = status.getChains().get(chain);
+        if (chainStatus != null && isChainActive(chainStatus)) {
+            throw new IndexerAlreadyRunningException(chain);
+        }
+
+        config.setStartBlock(newStartBlock);
+
+        log.info("API: updated startBlock for chain={} to {}", chain, newStartBlock);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("chain", chain);
+        response.put("startBlock", newStartBlock);
+        response.put("note", "In-memory override — reverts on app restart");
+        return ResponseEntity.ok(response);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
