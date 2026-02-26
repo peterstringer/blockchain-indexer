@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Clock, Flame, Box, GitBranch, AlertTriangle, Grid3x3 } from "lucide-react";
 import { DateRangePicker } from "@/components/common/DateRangePicker";
 import { GasMarketChart } from "@/components/charts/historical/GasMarketChart";
@@ -39,12 +39,19 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
     undefined
   );
 
-  const [preset, setPreset] = useState<Preset>("30d");
+  const [preset, setPreset] = useState<Preset>("all");
   const [chain, setChain] = useState<string | undefined>(undefined);
 
   const defaultRange = getDateRange(preset, earliestDate);
   const [from, setFrom] = useState(defaultRange.from);
   const [to, setTo] = useState(defaultRange.to);
+
+  // Auto-update date range when data availability loads
+  useEffect(() => {
+    if (earliestDate && preset === "all") {
+      setFrom(earliestDate);
+    }
+  }, [earliestDate, preset]);
 
   const handlePresetChange = useCallback(
     (p: Preset) => {
@@ -104,6 +111,11 @@ export function AnalyticsView({ status }: AnalyticsViewProps) {
         </div>
       ) : (
         <div className="space-y-4 mt-1">
+          {gasMarket && gasMarket.length > 0 && gasMarket.length < 5 && (
+            <div className="text-xs text-text-muted text-center py-2 bg-bg-secondary/30 rounded-lg border border-border/50">
+              Limited data ({gasMarket.length} day{gasMarket.length !== 1 ? "s" : ""}) — index more blocks for richer analytics
+            </div>
+          )}
           {/* 1. Gas Market */}
           <AnalyticsPanel
             icon={<Flame className="w-4 h-4" />}

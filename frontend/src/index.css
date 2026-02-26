@@ -99,3 +99,12 @@ body {
 .metric-pulse {
   animation: metric-pulse 400ms ease-out;
 }
+
+/* Coverage bar glow: overlay that fades in then out when a block is indexed */
+@keyframes bar-glow {
+  0%   { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+.bar-glow-overlay {
+  animation: bar-glow 800ms ease-out forwards;
+}

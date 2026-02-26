@@ -23,6 +23,15 @@ export function useStartIndexing() {
         if (!old) return old;
         const chain = variables.chain;
         if (!chain || !old.chains[chain]) return old;
+        const currentHealth = old.chains[chain].rpcHealth;
+        const currentlyRunning = typeof currentHealth === "string" && currentHealth.startsWith("RUNNING");
+        // If the other mode is already running, transition to RUNNING_BOTH
+        let newHealth: string;
+        if (currentlyRunning) {
+          newHealth = "RUNNING_BOTH";
+        } else {
+          newHealth = `RUNNING_${variables.mode ?? "BACKFILL"}`;
+        }
         return {
           ...old,
           running: true,
@@ -31,7 +40,7 @@ export function useStartIndexing() {
             ...old.chains,
             [chain]: {
               ...old.chains[chain],
-              rpcHealth: `RUNNING_${variables.mode ?? "BACKFILL"}`,
+              rpcHealth: newHealth,
             },
           },
         };
@@ -39,7 +48,8 @@ export function useStartIndexing() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["indexer-status"] });
-      toast("success", `Started ${variables.mode?.toLowerCase() ?? ""} indexing for ${variables.chain ?? "all chains"}`);
+      const modeLabel = variables.mode === "INCREMENTAL" ? "sync" : "backfill";
+      toast("success", `Started ${modeLabel} for ${variables.chain ?? "all chains"}`);
     },
     onError: (error: Error, variables) => {
       // Roll back optimistic update

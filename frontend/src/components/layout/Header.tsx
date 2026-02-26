@@ -5,13 +5,14 @@ import {
   Loader2,
   LayoutDashboard,
   BarChart3,
+  Download,
   Settings,
   Menu,
   X,
 } from "lucide-react";
 import type { WebSocketStatus } from "@/services/websocket";
 
-export type TabId = "dashboard" | "analytics" | "settings";
+export type TabId = "dashboard" | "analytics" | "export" | "settings";
 
 interface HeaderProps {
   wsStatus: WebSocketStatus;
@@ -22,6 +23,7 @@ interface HeaderProps {
 const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "export", label: "Export", icon: Download },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

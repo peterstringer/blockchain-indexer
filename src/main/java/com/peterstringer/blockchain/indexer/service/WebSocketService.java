@@ -78,16 +78,17 @@ public class WebSocketService {
      *
      * <p>Destination: {@code /topic/indexer/{chain}/blocks}
      *
-     * <p>Throttled to at most 2 messages per second per chain. During
-     * backfill, only the most recent blocks in each batch should be sent
-     * to avoid excessive message volume.
+     * <p>Not throttled — the caller ({@code sendRecentBlockNotifications})
+     * already limits notifications to the last N blocks per batch.
+     * Throttling here would silently drop most of the batch since all
+     * messages share the same throttle key and arrive within milliseconds.
      *
      * @param chain the chain key (e.g. "ethereum")
      * @param msg   the block details
      */
     public void sendBlockIndexed(String chain, BlockIndexedMessage msg) {
         String topic = TOPIC_PREFIX + chain + "/blocks";
-        sendThrottled(chain + ":blocks", topic, msg);
+        send(topic, msg);
     }
 
     /**

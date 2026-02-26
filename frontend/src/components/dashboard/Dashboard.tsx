@@ -4,8 +4,7 @@ import { OverviewBar } from "./OverviewBar";
 import { ChainCard } from "./ChainCard";
 import { BlockFeed } from "./BlockFeed";
 import { RpcHealthPanel } from "./RpcHealthPanel";
-import { ThroughputSparkline } from "@/components/charts/ThroughputSparkline";
-import { useChainUpdates, useProgressHistory } from "@/hooks/useWebSocket";
+import { useChainUpdates } from "@/hooks/useWebSocket";
 import type { IndexerStatus, BlockIndexedMessage, RpcHealthMessage } from "@/types";
 
 interface DashboardProps {
@@ -20,7 +19,7 @@ export function Dashboard({ status }: DashboardProps) {
     <div className="space-y-6">
       <OverviewBar status={status} />
 
-      {/* Chain cards + sparklines in a 3-column grid */}
+      {/* Chain cards in a 3-column grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {chainKeys.map((key) => (
           <ChainColumn
@@ -54,7 +53,7 @@ export function Dashboard({ status }: DashboardProps) {
               <div className="lg:col-span-2">
                 <AggregatedBlockFeed chainKeys={chainKeys} />
               </div>
-              <AggregatedRpcHealth chainKeys={chainKeys} />
+              <AggregatedRpcHealth chainKeys={chainKeys} status={status} />
             </div>
           </div>
         )}
@@ -63,7 +62,6 @@ export function Dashboard({ status }: DashboardProps) {
   );
 }
 
-/** A single column: chain card on top, sparkline directly beneath */
 function ChainColumn({
   chainKey,
   chain,
@@ -73,14 +71,7 @@ function ChainColumn({
   chain: IndexerStatus["chains"][string];
   isRunning: boolean;
 }) {
-  const history = useProgressHistory(chainKey);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <ChainCard chainKey={chainKey} chain={chain} isRunning={isRunning} />
-      <ThroughputSparkline chain={chainKey} history={history} />
-    </div>
-  );
+  return <ChainCard chainKey={chainKey} chain={chain} isRunning={isRunning} />;
 }
 
 /**
@@ -103,7 +94,7 @@ function AggregatedBlockFeed({ chainKeys }: { chainKeys: string[] }) {
   return <BlockFeed blocks={allBlocks} />;
 }
 
-function AggregatedRpcHealth({ chainKeys }: { chainKeys: string[] }) {
+function AggregatedRpcHealth({ chainKeys, status }: { chainKeys: string[]; status: IndexerStatus }) {
   const healthMap = new Map<string, RpcHealthMessage>();
 
   for (const key of chainKeys) {
@@ -113,5 +104,5 @@ function AggregatedRpcHealth({ chainKeys }: { chainKeys: string[] }) {
     }
   }
 
-  return <RpcHealthPanel healthMessages={healthMap} />;
+  return <RpcHealthPanel healthMessages={healthMap} status={status} />;
 }

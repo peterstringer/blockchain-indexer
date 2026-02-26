@@ -1,3 +1,13 @@
+/** Format a large number compactly: 3500000 -> "3.5M", 275000 -> "275.0K" */
+export function formatCompact(n: number | null | undefined): string {
+  if (n == null || n === 0) return "0";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString("en-US");
+}
+
 /** Format a large number with commas: 1234567 -> "1,234,567" */
 export function formatNumber(n: number | null | undefined): string {
   if (n == null) return "0";
@@ -9,10 +19,10 @@ export function formatBlock(n: number | null | undefined): string {
   return formatNumber(n);
 }
 
-/** Format blocks per second: 12.345 -> "12.3 blocks/s" */
+/** Format blocks per second: 12.345 -> "12.3 blk/s" */
 export function formatRate(bps: number | null | undefined): string {
-  if (bps == null) return "0.0 blocks/s";
-  return `${bps.toFixed(1)} blocks/s`;
+  if (bps == null) return "0.0 blk/s";
+  return `${bps.toFixed(1)} blk/s`;
 }
 
 /** Format gas in Gwei: 12.345678 -> "12.35 Gwei" */

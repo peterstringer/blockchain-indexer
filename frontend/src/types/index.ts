@@ -1,7 +1,7 @@
 /** Matches backend IndexerStatus response from GET /api/indexer/status */
 export interface IndexerStatus {
   running: boolean;
-  mode: "STOPPED" | "BACKFILL" | "INCREMENTAL";
+  mode: "STOPPED" | "BACKFILL" | "INCREMENTAL" | "RUNNING_BOTH";
   chains: Record<string, ChainStatus>;
 }
 
@@ -14,6 +14,14 @@ export interface ChainStatus {
   blocksPerSecond: number;
   /** Can be an object { totalProviders, healthyProviders } or a string like "NOT_STARTED" */
   rpcHealth: RpcHealth | string;
+  /** Reverse backfill progress as a percentage (0–100), null when not backfilling. */
+  backfillProgress?: number | null;
+  /** Lowest block reached during reverse backfill. */
+  backfillFloorBlock?: number | null;
+  /** Configured start block — the backfill target floor. */
+  backfillTargetBlock?: number | null;
+  /** Whether the reverse backfill has completed. */
+  reverseBackfillComplete?: boolean | null;
 }
 
 export interface RpcHealth {
@@ -36,6 +44,10 @@ export interface IndexerProgressMessage {
   blocksPerSecond: number;
   estimatedTimeRemaining: string | null;
   timestamp: string;
+  backfillProgress?: number | null;
+  backfillFloorBlock?: number | null;
+  backfillTargetBlock?: number | null;
+  reverseBackfillComplete?: boolean | null;
 }
 
 /** Matches backend BlockIndexedMessage WebSocket DTO */
@@ -74,6 +86,15 @@ export interface StartIndexingRequest {
 /** Request body for POST /api/indexer/stop */
 export interface StopIndexingRequest {
   chain?: string;
+}
+
+/** Chain configuration from GET /api/indexer/config */
+export interface ChainConfig {
+  chain: string;
+  name: string;
+  chainId: number;
+  startBlock: number;
+  blockTimeMs: number;
 }
 
 /** Response from GET /api/indexer/health */
@@ -151,4 +172,21 @@ export interface GasMarketDaily {
   avgPriorityFeeGwei: number | null;
   minBaseFeeGwei: number | null;
   maxBaseFeeGwei: number | null;
+}
+
+// ---- Export Types ----
+
+/** Response from GET /api/export/metadata */
+export interface ExportMetadata {
+  chains: string[];
+  earliestDate: string | null;
+  latestDate: string | null;
+  totalRows: number;
+  columns: ExportColumnDef[];
+}
+
+export interface ExportColumnDef {
+  key: string;
+  label: string;
+  group: string;
 }

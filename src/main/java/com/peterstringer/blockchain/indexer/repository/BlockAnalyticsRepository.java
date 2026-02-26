@@ -276,4 +276,27 @@ public interface BlockAnalyticsRepository extends JpaRepository<BlockAnalytics, 
              ORDER BY chain
             """)
     List<Object[]> findDataAvailability();
+
+    // =========================================================================
+    // Export queries — return full entities for CSV/Parquet export
+    // =========================================================================
+
+    /**
+     * Fetches full {@link BlockAnalytics} entities for data export with
+     * optional chain filtering and date range.
+     */
+    @Query("SELECT b FROM BlockAnalytics b WHERE (:chain IS NULL OR b.chain = :chain) "
+         + "AND b.blockDate BETWEEN :from AND :to ORDER BY b.chain, b.blockDate, b.blockNumber")
+    List<BlockAnalytics> findForExport(@Param("chain") String chain,
+                                       @Param("from") LocalDate from,
+                                       @Param("to") LocalDate to);
+
+    /**
+     * Counts rows matching the export filter — used for the metadata endpoint.
+     */
+    @Query("SELECT COUNT(b) FROM BlockAnalytics b WHERE (:chain IS NULL OR b.chain = :chain) "
+         + "AND b.blockDate BETWEEN :from AND :to")
+    long countForExport(@Param("chain") String chain,
+                        @Param("from") LocalDate from,
+                        @Param("to") LocalDate to);
 }
