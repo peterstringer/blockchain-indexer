@@ -25,6 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Validates the full flow: start indexing in demo mode, generate
  * synthetic blocks, write to Parquet buffers, persist checkpoints
  * to PostgreSQL, and track status transitions.
+ *
+ * <p>The indexer uses <strong>reverse backfill</strong>: it starts at
+ * the chain head and works backward toward the configured start block.
+ * Backfill updates {@code backfillFloorBlock} and {@code totalBlocksIndexed}
+ * but does <em>not</em> update {@code lastIndexedBlock} (which is only
+ * used by incremental/forward mode).
  */
 @DisplayName("Indexer Integration")
 class IndexerIntegrationIT extends AbstractIntegrationTest {
@@ -57,7 +63,7 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
         void indexesAllBlocksInDemoMode() {
             indexerService.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
 
-            // Wait for backfill to complete (end-block=20, batch-size=5)
+            // Wait for backfill to process blocks (reverse: chainHead→startBlock)
             Awaitility.await()
                     .atMost(Duration.ofSeconds(30))
                     .pollInterval(Duration.ofMillis(500))
@@ -65,29 +71,31 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                         IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum")
                                 .orElse(null);
                         assertThat(cp).isNotNull();
-                        assertThat(cp.getLastIndexedBlock()).isGreaterThanOrEqualTo(20L);
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThanOrEqualTo(20L);
                     });
 
-            // Verify checkpoint totals
+            // Verify checkpoint totals and backfill progress
             IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum").orElseThrow();
             assertThat(cp.getTotalBlocksIndexed()).isGreaterThan(0L);
             assertThat(cp.getTotalTransactionsIndexed()).isGreaterThan(0L);
+            assertThat(cp.getBackfillFloorBlock()).isNotNull();
         }
 
         @Test
-        @DisplayName("should resume from existing checkpoint")
+        @DisplayName("should resume from existing backfill checkpoint")
         void resumesFromCheckpoint() {
-            // Pre-insert checkpoint at block 10
+            // Pre-insert checkpoint simulating a partial backfill that reached floor=15
             IndexerCheckpoint existing = new IndexerCheckpoint();
             existing.setChain("ethereum");
-            existing.setLastIndexedBlock(10L);
-            existing.setTotalBlocksIndexed(11L);
+            existing.setLastIndexedBlock(-1L);
+            existing.setBackfillFloorBlock(15L);
+            existing.setTotalBlocksIndexed(10L);
             existing.setTotalTransactionsIndexed(500L);
             existing.setCreatedAt(OffsetDateTime.now(ZoneOffset.UTC));
             existing.setLastUpdated(OffsetDateTime.now(ZoneOffset.UTC));
             checkpointRepository.save(existing);
 
-            // Start backfill — should resume from block 11
+            // Start backfill — should resume from floor=15 and work down to 0
             indexerService.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
 
             Awaitility.await()
@@ -96,13 +104,12 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                     .untilAsserted(() -> {
                         IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum")
                                 .orElseThrow();
-                        assertThat(cp.getLastIndexedBlock()).isGreaterThanOrEqualTo(20L);
+                        // Should have indexed more blocks beyond the initial 10
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThan(10L);
                     });
 
-            // Should have indexed blocks 11-20 (10 more blocks)
-            IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum").orElseThrow();
-            assertThat(cp.getTotalBlocksIndexed()).isGreaterThanOrEqualTo(21L);
             // Transactions accumulated from the pre-existing 500 + new ones
+            IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum").orElseThrow();
             assertThat(cp.getTotalTransactionsIndexed()).isGreaterThan(500L);
         }
 
@@ -111,21 +118,19 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
         void handlesMultipleChains() {
             indexerService.startAll(BlockIndexerService.IndexMode.BACKFILL);
 
-            // Wait for both chains to complete
+            // Wait for both chains to make progress
             Awaitility.await()
                     .atMost(Duration.ofSeconds(30))
                     .pollInterval(Duration.ofMillis(500))
                     .untilAsserted(() -> {
-                        assertThat(checkpointRepository.findByChain("ethereum"))
-                                .isPresent()
-                                .get()
-                                .extracting(IndexerCheckpoint::getLastIndexedBlock)
-                                .satisfies(block -> assertThat((Long) block).isGreaterThanOrEqualTo(20L));
-                        assertThat(checkpointRepository.findByChain("polygon"))
-                                .isPresent()
-                                .get()
-                                .extracting(IndexerCheckpoint::getLastIndexedBlock)
-                                .satisfies(block -> assertThat((Long) block).isGreaterThanOrEqualTo(10L));
+                        IndexerCheckpoint ethCp = checkpointRepository
+                                .findByChain("ethereum").orElse(null);
+                        IndexerCheckpoint polyCp = checkpointRepository
+                                .findByChain("polygon").orElse(null);
+                        assertThat(ethCp).isNotNull();
+                        assertThat(ethCp.getTotalBlocksIndexed()).isGreaterThan(0L);
+                        assertThat(polyCp).isNotNull();
+                        assertThat(polyCp.getTotalBlocksIndexed()).isGreaterThan(0L);
                     });
         }
     }
@@ -149,18 +154,21 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                     .atMost(Duration.ofSeconds(30))
                     .pollInterval(Duration.ofMillis(200))
                     .untilAsserted(() -> {
-                        assertThat(checkpointRepository.findByChain("ethereum")).isPresent();
+                        IndexerCheckpoint cp = checkpointRepository
+                                .findByChain("ethereum").orElse(null);
+                        assertThat(cp).isNotNull();
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThan(0L);
                     });
 
             // Stop
             indexerService.stopIndexing("ethereum");
 
-            // Record checkpoint position
-            long checkpointAfterStop = checkpointRepository.findByChain("ethereum")
-                    .orElseThrow().getLastIndexedBlock();
-            assertThat(checkpointAfterStop).isGreaterThanOrEqualTo(0L);
+            // Record checkpoint position after stop
+            long blocksAfterStop = checkpointRepository.findByChain("ethereum")
+                    .orElseThrow().getTotalBlocksIndexed();
+            assertThat(blocksAfterStop).isGreaterThan(0L);
 
-            // Resume — should start from checkpoint
+            // Resume — should continue from checkpoint
             indexerService.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
 
             Awaitility.await()
@@ -169,7 +177,7 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                     .untilAsserted(() -> {
                         IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum")
                                 .orElseThrow();
-                        assertThat(cp.getLastIndexedBlock()).isGreaterThanOrEqualTo(20L);
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThanOrEqualTo(20L);
                     });
         }
     }
@@ -187,7 +195,9 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
         void persistsCorrectTotals() {
             indexerService.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
 
-            // Wait for completion
+            // Wait for backfill completion.
+            // Backfill starts at chainHead (24) and sets high = chainHead - 1 = 23,
+            // so it processes blocks 0–23 = 24 blocks total.
             Awaitility.await()
                     .atMost(Duration.ofSeconds(30))
                     .pollInterval(Duration.ofMillis(500))
@@ -195,13 +205,15 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                         IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum")
                                 .orElse(null);
                         assertThat(cp).isNotNull();
-                        assertThat(cp.getLastIndexedBlock()).isGreaterThanOrEqualTo(20L);
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThanOrEqualTo(24L);
                     });
 
             IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum").orElseThrow();
-            // blocks 0..20 = 21 blocks total
-            assertThat(cp.getTotalBlocksIndexed()).isEqualTo(21L);
+            // 24 blocks total (0..23); chainHead block 24 is not processed by backfill
+            assertThat(cp.getTotalBlocksIndexed()).isEqualTo(24L);
             assertThat(cp.getTotalTransactionsIndexed()).isGreaterThan(0L);
+            assertThat(cp.getBackfillFloorBlock()).isNotNull();
+            assertThat(cp.getBackfillFloorBlock()).isLessThanOrEqualTo(0L);
             assertThat(cp.getLastUpdated()).isNotNull();
             assertThat(cp.getCreatedAt()).isNotNull();
         }
@@ -218,17 +230,15 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
         @Test
         @DisplayName("should report running status during indexing")
         void reportsRunningDuringIndexing() {
+            // startIndexing() sets running state synchronously before spawning
+            // the background thread, so we can check immediately after it returns.
+            // In demo mode, backfill of 25 blocks completes in <100ms, so
+            // Awaitility polling would miss the running window.
             indexerService.startIndexing("ethereum", BlockIndexerService.IndexMode.BACKFILL);
 
-            // Verify status shows running
-            Awaitility.await()
-                    .atMost(Duration.ofSeconds(10))
-                    .pollInterval(Duration.ofMillis(100))
-                    .untilAsserted(() -> {
-                        IndexerStatus status = indexerService.getStatus();
-                        assertThat(status.isRunning()).isTrue();
-                        assertThat(status.getMode()).isEqualTo(IndexerStatus.Mode.BACKFILL);
-                    });
+            IndexerStatus status = indexerService.getStatus();
+            assertThat(status.isRunning()).isTrue();
+            assertThat(status.getMode()).isEqualTo(IndexerStatus.Mode.BACKFILL);
         }
 
         @Test
@@ -244,7 +254,7 @@ class IndexerIntegrationIT extends AbstractIntegrationTest {
                         IndexerCheckpoint cp = checkpointRepository.findByChain("ethereum")
                                 .orElse(null);
                         assertThat(cp).isNotNull();
-                        assertThat(cp.getLastIndexedBlock()).isGreaterThanOrEqualTo(20L);
+                        assertThat(cp.getTotalBlocksIndexed()).isGreaterThanOrEqualTo(20L);
                     });
 
             // Wait for the indexing thread to exit

@@ -65,11 +65,18 @@ class ParquetIntegrationIT extends AbstractIntegrationTest {
                     .mapToInt(b -> b.getTransactions().size())
                     .sum();
 
+            // Record totals before write (auto-flush may have drained previous buffers)
+            Map<String, Object> before = parquetWriterService.getStatistics();
+            long totalBefore = (long) before.get("bufferedTransactions")
+                    + (long) before.get("totalTransactionsWritten");
+
             parquetWriterService.writeBlocks(blocks);
 
-            Map<String, Object> stats = parquetWriterService.getStatistics();
-            assertThat((long) stats.get("bufferedTransactions"))
-                    .isGreaterThanOrEqualTo(expectedTxCount);
+            // Check that total transactions (buffered + flushed) increased by at least expectedTxCount
+            Map<String, Object> after = parquetWriterService.getStatistics();
+            long totalAfter = (long) after.get("bufferedTransactions")
+                    + (long) after.get("totalTransactionsWritten");
+            assertThat(totalAfter - totalBefore).isGreaterThanOrEqualTo(expectedTxCount);
         }
 
         @Test
@@ -114,6 +121,7 @@ class ParquetIntegrationIT extends AbstractIntegrationTest {
                     .blockHash("0x" + "a".repeat(64))
                     .parentHash("0x" + "b".repeat(64))
                     .timestamp(1_700_000_000L)
+                    .miner("0x" + "0".repeat(40))
                     .gasLimit(30_000_000L)
                     .gasUsed(15_000_000L)
                     .gasUsedPercentage(50.0)
