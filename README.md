@@ -430,39 +430,6 @@ curl -o analytics.parquet 'http://localhost:8080/api/export/block-analytics?form
 
 ---
 
-## Dashboard
-
-The React dashboard runs at **http://localhost:8080** (served by Spring Boot) or **http://localhost:3000** (Vite dev server with hot reload).
-
-### Dashboard Tab
-- **Overview bar** — Total blocks/transactions indexed, overall running state, global controls
-- **Chain cards** — Per-chain status with live throughput, coverage bar, lag indicator, RPC health, and start/stop/sync/backfill controls
-- **System details** — Collapsible panel with aggregated live block feed and RPC provider health
-
-### Analytics Tab
-- **Date range picker** — Sticky controls with presets (7D, 30D, 90D, All) and chain filter
-- **Gas Market chart** — Base fee and effective gas price trends over time
-- **Block Space Demand** — Block fullness percentage correlated with base fee
-- **Transaction Type Evolution** — EIP-1559 vs legacy vs contract creation over time
-- **Failure Analysis** — Failed transaction rate vs gas price correlation
-- **Transaction Density Heatmap** — Interactive hour x day-of-week visualization
-
-### Export Tab
-- **Three-step wizard** — Select data range → choose columns → download (CSV or Parquet)
-- **19 selectable columns** grouped by category
-- **Streaming download** for large datasets
-
-### Settings Tab
-- Chain configuration with editable start blocks
-- Checkpoint management and status monitoring
-- System health indicators
-
-### Keyboard Shortcuts
-- **Space** — Toggle indexing on/off
-- **1/2/3/4** — Switch between tabs
-
----
-
 ## Querying Parquet Data
 
 The Parquet files are compatible with any columnar query engine.
