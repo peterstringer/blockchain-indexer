@@ -299,29 +299,30 @@ public class BlockIndexerService {
         // Get the current chain head for reference
         long chainHead = rpcClientService.getLatestBlockNumber(chain);
 
-        // In demo mode, reset the checkpoint so each run starts fresh.
-        // Without this, stale checkpoints (from production or a previous demo run)
-        // make the indexer think everything is already indexed.
-        // Only reset when no other mode is currently running for this chain,
-        // to avoid wiping backfill progress if incremental is started second.
         // Reuse existing context if the other mode is running, else create fresh
         ChainIndexingContext ctx;
         boolean otherModeRunning = existing != null && existing.getState() != ChainState.STOPPED;
 
-        // In demo mode, reset the checkpoint so each run starts fresh.
-        // Without this, stale checkpoints (from production or a previous demo run)
-        // make the indexer think everything is already indexed.
-        // Only reset when no other mode is currently running for this chain,
-        // to avoid wiping backfill progress if incremental is started second.
+        // In demo mode, reset stale checkpoints so each run starts fresh.
+        // Resets when: (a) checkpoint is from a different config (production data
+        // beyond the demo range), or (b) a previous demo backfill already completed.
+        // Does NOT reset mid-backfill checkpoints or test-setup data.
         if (rpcClientService.isDemoMode() && !otherModeRunning) {
+            long demoEnd = config.getStartBlock()
+                    + properties.getDemo().getSyntheticBlockCount() - 1;
             checkpointRepository.findByChain(chain).ifPresent(cp -> {
-                cp.setLastIndexedBlock(config.getStartBlock() - 1);
-                cp.setBackfillFloorBlock(null);
-                cp.setTotalBlocksIndexed(0L);
-                cp.setTotalTransactionsIndexed(0L);
-                cp.setLastUpdated(OffsetDateTime.now(ZoneOffset.UTC));
-                checkpointRepository.save(cp);
-                log.info("Demo mode: reset checkpoint for chain={}", chain);
+                boolean outsideDemoRange = cp.getLastIndexedBlock() > demoEnd;
+                boolean backfillAlreadyComplete = cp.getBackfillFloorBlock() != null
+                        && cp.getBackfillFloorBlock() <= config.getStartBlock();
+                if (outsideDemoRange || backfillAlreadyComplete) {
+                    cp.setLastIndexedBlock(config.getStartBlock() - 1);
+                    cp.setBackfillFloorBlock(null);
+                    cp.setTotalBlocksIndexed(0L);
+                    cp.setTotalTransactionsIndexed(0L);
+                    cp.setLastUpdated(OffsetDateTime.now(ZoneOffset.UTC));
+                    checkpointRepository.save(cp);
+                    log.info("Demo mode: reset stale checkpoint for chain={}", chain);
+                }
             });
         }
         if (otherModeRunning) {

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,6 +46,9 @@ class DatabaseIntegrationIT extends AbstractIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private EntityManager entityManager;
+
     @AfterEach
     void cleanUp() {
         rpcProviderHealthRepository.deleteAll();
@@ -74,7 +78,7 @@ class DatabaseIntegrationIT extends AbstractIntegrationTest {
             assertThat(columns).containsExactly(
                     "id", "chain", "last_indexed_block",
                     "total_blocks_indexed", "total_transactions_indexed",
-                    "last_updated", "created_at");
+                    "last_updated", "created_at", "backfill_floor_block");
         }
 
         @Test
@@ -199,8 +203,9 @@ class DatabaseIntegrationIT extends AbstractIntegrationTest {
             checkpointRepository.updateCheckpoint(
                     "ethereum", 108L, 3L, 30L, OffsetDateTime.now(ZoneOffset.UTC));
 
-            // Verify increments accumulated correctly
+            // Flush pending SQL then clear L1 cache so findByChain re-reads from DB
             checkpointRepository.flush();
+            entityManager.clear();
             IndexerCheckpoint result = checkpointRepository.findByChain("ethereum").orElseThrow();
             assertThat(result.getLastIndexedBlock()).isEqualTo(108L);
             assertThat(result.getTotalBlocksIndexed()).isEqualTo(8L);
@@ -371,6 +376,7 @@ class DatabaseIntegrationIT extends AbstractIntegrationTest {
             assertThat(updated).isEqualTo(1);
 
             rpcProviderHealthRepository.flush();
+            entityManager.clear();
             RpcProviderHealth result = rpcProviderHealthRepository
                     .findByChainAndProviderUrlHash("ethereum", "h1").orElseThrow();
             assertThat(result.getFailureCount()).isEqualTo(0L);
@@ -394,6 +400,7 @@ class DatabaseIntegrationIT extends AbstractIntegrationTest {
             rpcProviderHealthRepository.resetFailureCountsByChain("ethereum");
 
             rpcProviderHealthRepository.flush();
+            entityManager.clear();
             RpcProviderHealth polyResult = rpcProviderHealthRepository
                     .findByChainAndProviderUrlHash("polygon", "h2").orElseThrow();
             assertThat(polyResult.getFailureCount()).isEqualTo(8L);
