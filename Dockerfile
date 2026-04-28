@@ -21,7 +21,7 @@ RUN npx vite build --outDir /app/static
 # ------------------------------------------
 # Stage 2: Build backend
 # ------------------------------------------
-FROM maven:3-eclipse-temurin-25-alpine AS backend-build
+FROM maven:3-eclipse-temurin-26-alpine AS backend-build
 
 WORKDIR /app
 
