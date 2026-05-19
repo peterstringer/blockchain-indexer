@@ -11,7 +11,7 @@
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",
     "@tanstack/react-query": "^5.90.21",
-    "date-fns": "^4.1.0",
+    "date-fns": "^4.2.1",
     "lucide-react": "^0.575.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
